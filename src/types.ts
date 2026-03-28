@@ -115,6 +115,7 @@ export type MapperSummary = {
   redacted_logging: boolean;
   parser_usage: Record<string, number>;
   skipped_entries: number;
+  fix_in_tracker_or_manual_entry_count: number;
   total_output_items: number;
   total_exception_items: number;
   total_rounded_minutes: number;

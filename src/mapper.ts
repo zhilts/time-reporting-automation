@@ -268,12 +268,19 @@ function buildExceptions(aggregatedItems: ReportItem[], redactedLogging: boolean
       continue;
     }
 
+    const fixInTrackerOrManualEntry = item.review_reasons.some((reason) =>
+      reason === "Entry has no tag and did not match ticket or meeting conventions." ||
+      reason === "Meeting entry is missing a recognized meeting bucket tag." ||
+      reason === "Ticket entry is missing a recognized activity tag."
+    );
+
     detailed.push({
       idempotency_key: item.idempotency_key || null,
       entry_type: item.entry_type,
       work_date: item.work_date,
       target_project_code: item.target_project_code,
       task_id: redactedLogging && item.task_id ? `...${item.task_id.slice(-4)}` : item.task_id,
+      resolution_action: fixInTrackerOrManualEntry ? "fix_in_tracker_or_manual_entry" : "review_mapping",
       review_reasons: item.review_reasons,
       source_ids: redactedLogging ? item.source_ids.map((sourceId) => `...${sourceId.slice(-6)}`) : item.source_ids
     });
@@ -290,11 +297,16 @@ function buildRunSummary(
   exceptions: PrimitiveRecord[],
   redactedLogging: boolean
 ): MapperSummary {
+  const fixInTrackerOrManualEntryCount = exceptions.filter(
+    (item) => item.resolution_action === "fix_in_tracker_or_manual_entry"
+  ).length;
+
   return {
     input_path: inputPath,
     redacted_logging: redactedLogging,
     parser_usage: parserCounts,
     skipped_entries: skippedEntries,
+    fix_in_tracker_or_manual_entry_count: fixInTrackerOrManualEntryCount,
     total_output_items: aggregatedItems.length,
     total_exception_items: exceptions.length,
     total_rounded_minutes: aggregatedItems.reduce((sum, item) => sum + item.duration_minutes_rounded, 0)
