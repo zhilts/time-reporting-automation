@@ -1,6 +1,6 @@
 {
   "toggl": {
-    "required_fields": ["id", "start", "duration_minutes", "project", "task", "tags"],
+    "required_fields": ["id", "start", "duration_minutes", "description"],
     "field_aliases": {
       "id": ["id", "ID"],
       "start": ["start", "Start", "Start date"],
@@ -38,7 +38,9 @@
   },
   "entry_classification": {
     "meeting_task_names": ["Meeting"],
-    "ticket_id_patterns": ["^[A-Z]+-\\d+$"]
+    "meeting_description_patterns": ["standup", "sync", "meeting", "daily", "1-1", "1:1", "interview"],
+    "ticket_id_patterns": ["^[A-Z]+-\\d+$"],
+    "ticket_id_sources": ["task", "description"]
   },
   "rounding": {
     "increment_minutes": 30,

@@ -1,12 +1,35 @@
 import type { ParsedEntry, ParserContext, ProjectParser, TogglEntry } from "../types.ts";
 
+function extractTicketId(entry: TogglEntry, context: ParserContext): string | null {
+  const candidates = context.ticketIdSources.map((source) => entry[source] ?? "").map((value) => value.trim()).filter(Boolean);
+  for (const candidate of candidates) {
+    if (context.ticketIdRegexes.some((regex) => regex.test(candidate))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function isMeetingLike(entry: TogglEntry, context: ParserContext): boolean {
+  if (context.meetingTaskNames.includes(entry.task)) {
+    return true;
+  }
+
+  if (entry.tags.some((tag) => Boolean(context.meetingBucketTags[tag]))) {
+    return true;
+  }
+
+  const description = entry.description.trim().toLowerCase();
+  return context.meetingDescriptionPatterns.some((pattern) => description.includes(pattern.toLowerCase()));
+}
+
 export const defaultParser: ProjectParser = {
   name: "default",
   parseEntry(entry: TogglEntry, context: ParserContext): ParsedEntry {
-    const looksLikeTicket = context.ticketIdRegexes.some((regex) => regex.test(entry.task));
+    const ticketId = extractTicketId(entry, context);
     const meetingTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
 
-    if (context.meetingTaskNames.includes(entry.task) || meetingTag) {
+    if (isMeetingLike(entry, context)) {
       const bucket = meetingTag ? context.meetingBucketTags[meetingTag] : null;
       return {
         entryType: "meeting",
@@ -19,11 +42,11 @@ export const defaultParser: ProjectParser = {
       };
     }
 
-    if (looksLikeTicket) {
+    if (ticketId) {
       const activityTag = entry.tags.find((tag) => context.activityDescriptionTags[tag]);
       return {
         entryType: "ticket_work",
-        taskId: entry.task,
+        taskId: ticketId,
         activityCode: null,
         targetDescription: activityTag ? context.activityDescriptionTags[activityTag] : (entry.tags[0] ?? "Work"),
         meetingBucket: null,
@@ -36,10 +59,10 @@ export const defaultParser: ProjectParser = {
       entryType: "other",
       taskId: null,
       activityCode: null,
-      targetDescription: entry.tags[0] ?? "Other",
+      targetDescription: context.activityDescriptionTags[entry.tags[0] ?? ""] ?? entry.tags[0] ?? entry.description ?? "Other",
       meetingBucket: null,
-      needsReview: true,
-      reviewReasons: ["Entry did not match known ticket or meeting conventions."]
+      needsReview: entry.tags.length === 0,
+      reviewReasons: entry.tags.length === 0 ? ["Entry has no tag and did not match ticket or meeting conventions."] : []
     };
   }
 };

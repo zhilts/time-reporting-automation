@@ -27,6 +27,7 @@
     "RealMeetingTagB": "Real Meeting Bucket B"
   },
   "entry_classification": {
+    "meeting_description_patterns": ["standup", "sync", "meeting", "daily"],
     "ticket_id_patterns": ["^ABC-\\d+$", "^XYZ-\\d+$"]
   }
 }

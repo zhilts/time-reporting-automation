@@ -52,7 +52,9 @@ export type ParserFactoryConfig = {
 
 export type EntryClassificationConfig = {
   meeting_task_names?: string[];
+  meeting_description_patterns?: string[];
   ticket_id_patterns?: string[];
+  ticket_id_sources?: Array<"task" | "description">;
 };
 
 export type RoundingConfig = {
@@ -82,7 +84,9 @@ export type ParserContext = {
   parserName: string;
   redactedLogging: boolean;
   meetingTaskNames: string[];
+  meetingDescriptionPatterns: string[];
   ticketIdRegexes: RegExp[];
+  ticketIdSources: Array<"task" | "description">;
   meetingBucketTags: Record<string, string>;
   activityDescriptionTags: Record<string, string>;
   incrementMinutes: number;
