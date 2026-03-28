@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "map": "node ./src/cli.js map",
+    "fetch:toggl": "node ./src/cli.js fetch-toggl",
+    "sync:toggl": "node ./src/cli.js sync-toggl",
     "map:sample": "node ./src/cli.js map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/sample --redact",
     "check": "node ./src/cli.js map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/check --redact"
   }

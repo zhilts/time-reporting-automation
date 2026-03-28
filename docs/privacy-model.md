@@ -33,6 +33,12 @@ The mapper should support a local-only execution path:
 4. resolve project parser
 5. emit sanitized logs by default
 
+The direct API path should follow the same rule:
+
+1. fetch from Toggl API using a local token
+2. store normalized raw input only in `runtime/input/`
+3. map locally into `runtime/output/`
+
 ## Logging Strategy
 
 Default logs should not print:

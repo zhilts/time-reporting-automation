@@ -33,8 +33,22 @@ Deterministic pipeline for transforming Toggl Track exports into target-system-r
 
 1. Copy `config/private.mapping.example.json` to `config/private.mapping.json`.
 2. Fill in local project aliases, internal codes, and tag mappings.
-3. Put a Toggl export in a local path.
-4. Run:
+3. Add your Toggl API token to the private config or `TOGGL_API_TOKEN`.
+4. Either fetch from Toggl directly or use an existing export.
+
+Direct sync from Toggl API:
+
+```bash
+npm run sync:toggl -- --start-date 2026-03-01 --end-date 2026-03-31 --redact
+```
+
+Fetch only:
+
+```bash
+npm run fetch:toggl -- --start-date 2026-03-01 --end-date 2026-03-31
+```
+
+Map an existing local export:
 
 ```bash
 npm run map -- --input /absolute/path/to/export.json --redact

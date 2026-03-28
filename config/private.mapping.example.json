@@ -2,6 +2,11 @@
   "privacy": {
     "contains_sensitive_mappings": true
   },
+  "toggl_api": {
+    "api_token": "YOUR_TOGGL_API_TOKEN",
+    "default_start_date": "2026-03-01",
+    "default_end_date": "2026-03-31"
+  },
   "parser_factory": {
     "project_parser_map": {
       "External Project Name": "ticket-id-project"
