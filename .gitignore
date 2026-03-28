@@ -1,4 +1,5 @@
 config/private.mapping.yaml
+config/private.mapping.json
 runtime/
 *.log
 *.jsonl

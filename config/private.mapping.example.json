@@ -1,0 +1,27 @@
+{
+  "privacy": {
+    "contains_sensitive_mappings": true
+  },
+  "parser_factory": {
+    "project_parser_map": {
+      "External Project Name": "ticket-id-project"
+    },
+    "project_aliases": {
+      "Alternate External Name": "External Project Name"
+    }
+  },
+  "project_code_map": {
+    "External Project Name": "INTERNAL_CODE_HERE"
+  },
+  "activity_description_tags": {
+    "RealCategoryTagA": "Real Target Description A",
+    "RealCategoryTagB": "Real Target Description B"
+  },
+  "meeting_bucket_tags": {
+    "RealMeetingTagA": "Real Meeting Bucket A",
+    "RealMeetingTagB": "Real Meeting Bucket B"
+  },
+  "entry_classification": {
+    "ticket_id_patterns": ["^ABC-\\d+$", "^XYZ-\\d+$"]
+  }
+}

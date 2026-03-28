@@ -25,8 +25,28 @@ Deterministic pipeline for transforming Toggl Track exports into target-system-r
 
 - `docs/` - operating assumptions and rules
 - `schemas/` - canonical data contracts
-- `config/` - mapping and aggregation configuration
-- `src/` - mapper, parser factory, and uploader stubs
+- `config/` - public and private JSON configuration
+- `fixtures/` - generic sample input
+- `src/` - runnable mapper CLI, parser factory, and uploader stub
+
+## Usage
+
+1. Copy `config/private.mapping.example.json` to `config/private.mapping.json`.
+2. Fill in local project aliases, internal codes, and tag mappings.
+3. Put a Toggl export in a local path.
+4. Run:
+
+```bash
+npm run map -- --input /absolute/path/to/export.json --redact
+```
+
+Outputs are written to `runtime/output/latest/`.
+
+For a generic dry run:
+
+```bash
+npm run map:sample
+```
 
 ## Current View
 
@@ -63,4 +83,4 @@ This repository should stay generic.
 - No real ticket prefixes in parser names or examples.
 - No production exports committed to the repository.
 
-Sensitive mappings should live in a local file such as `config/private.mapping.yaml`, which is loaded at runtime and excluded from version control.
+Sensitive mappings should live in a local file such as `config/private.mapping.json`, which is loaded at runtime and excluded from version control.

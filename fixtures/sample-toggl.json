@@ -1,0 +1,32 @@
+[
+  {
+    "id": "entry-001",
+    "start": "2026-03-27T09:00:00Z",
+    "duration_minutes": 35,
+    "client": "Client A",
+    "project": "Project Alpha",
+    "task": "TICKET-123",
+    "tags": ["CategoryA"],
+    "description": "sample"
+  },
+  {
+    "id": "entry-002",
+    "start": "2026-03-27T10:00:00Z",
+    "duration_minutes": 10,
+    "client": "Client A",
+    "project": "Project Alpha",
+    "task": "Meeting",
+    "tags": ["MeetingTypeA"],
+    "description": "daily"
+  },
+  {
+    "id": "entry-003",
+    "start": "2026-03-27T10:20:00Z",
+    "duration_minutes": 20,
+    "client": "Client A",
+    "project": "Project Alpha",
+    "task": "Meeting",
+    "tags": ["MeetingTypeA"],
+    "description": "sync"
+  }
+]

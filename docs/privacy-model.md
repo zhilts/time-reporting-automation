@@ -16,7 +16,7 @@ Build the mapper so that sensitive project metadata and time-entry contents do n
 
 Suggested local files:
 
-- `config/private.mapping.yaml`
+- `config/private.mapping.json`
 - `runtime/input/`
 - `runtime/output/`
 - `runtime/state/`

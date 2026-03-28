@@ -1,0 +1,11 @@
+{
+  "name": "time-reporting-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "map": "node ./src/cli.js map",
+    "map:sample": "node ./src/cli.js map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/sample --redact",
+    "check": "node ./src/cli.js map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/check --redact"
+  }
+}
