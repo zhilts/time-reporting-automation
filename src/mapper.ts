@@ -93,6 +93,16 @@ function normalizeRecords(rawEntries: unknown[], config: AppConfig): TogglEntry[
   });
 }
 
+function shouldIncludeEntry(entry: TogglEntry, config: AppConfig): boolean {
+  const includeProjects = config.scope?.include_projects;
+  if (!includeProjects || includeProjects.length === 0) {
+    return true;
+  }
+
+  const normalizedProjectName = normalizeProjectName(entry.project, config.parser_factory.project_aliases ?? {});
+  return includeProjects.includes(normalizedProjectName);
+}
+
 function roundMinutes(minutes: number, increment: number, policy: "nearest" | "ceil" | "floor"): number {
   if (policy === "ceil") {
     return Math.max(increment, Math.ceil(minutes / increment) * increment);
@@ -250,10 +260,10 @@ function redactItem(item: ReportItem): ReportItem {
   };
 }
 
-function buildExceptions(baseItems: BaseItem[], aggregatedItems: ReportItem[], redactedLogging: boolean): PrimitiveRecord[] {
+function buildExceptions(aggregatedItems: ReportItem[], redactedLogging: boolean): PrimitiveRecord[] {
   const detailed: PrimitiveRecord[] = [];
 
-  for (const item of [...baseItems, ...aggregatedItems]) {
+  for (const item of aggregatedItems) {
     if (!item.needs_review) {
       continue;
     }
@@ -275,6 +285,7 @@ function buildExceptions(baseItems: BaseItem[], aggregatedItems: ReportItem[], r
 function buildRunSummary(
   inputPath: string,
   parserCounts: Record<string, number>,
+  skippedEntries: number,
   aggregatedItems: ReportItem[],
   exceptions: PrimitiveRecord[],
   redactedLogging: boolean
@@ -283,6 +294,7 @@ function buildRunSummary(
     input_path: inputPath,
     redacted_logging: redactedLogging,
     parser_usage: parserCounts,
+    skipped_entries: skippedEntries,
     total_output_items: aggregatedItems.length,
     total_exception_items: exceptions.length,
     total_rounded_minutes: aggregatedItems.reduce((sum, item) => sum + item.duration_minutes_rounded, 0)
@@ -300,9 +312,11 @@ export function runMapper({
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const rawEntries = readInputFile(path.resolve(rootDir, inputPath));
   const normalizedEntries = normalizeRecords(rawEntries, config);
+  const includedEntries = normalizedEntries.filter((entry) => shouldIncludeEntry(entry, config));
+  const skippedEntries = normalizedEntries.length - includedEntries.length;
   const parserCounts: Record<string, number> = {};
 
-  const baseItems = normalizedEntries.map((entry) => {
+  const baseItems = includedEntries.map((entry) => {
     const normalizedProjectName = normalizeProjectName(entry.project, config.parser_factory.project_aliases ?? {});
     const parserName =
       config.parser_factory.project_parser_map?.[normalizedProjectName] ?? config.parser_factory.default_parser ?? "default";
@@ -311,9 +325,9 @@ export function runMapper({
   });
 
   const aggregatedItems = aggregateBaseItems(baseItems, config);
-  const detailedExceptions = buildExceptions(baseItems, aggregatedItems, redact);
+  const detailedExceptions = buildExceptions(aggregatedItems, redact);
   const redactedItems = aggregatedItems.map(redactItem);
-  const summary = buildRunSummary(inputPath, parserCounts, aggregatedItems, detailedExceptions, redact);
+  const summary = buildRunSummary(inputPath, parserCounts, skippedEntries, aggregatedItems, detailedExceptions, redact);
   const resolvedOutputDir = path.resolve(rootDir, outputDir);
 
   ensureDirectory(resolvedOutputDir);

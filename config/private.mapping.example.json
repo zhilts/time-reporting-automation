@@ -2,6 +2,11 @@
   "privacy": {
     "contains_sensitive_mappings": true
   },
+  "scope": {
+    "include_projects": [
+      "External Project Name"
+    ]
+  },
   "toggl_api": {
     "api_token": "YOUR_TOGGL_API_TOKEN",
     "default_start_date": "2026-03-01",

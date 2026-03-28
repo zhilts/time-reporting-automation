@@ -63,6 +63,9 @@ export type RoundingConfig = {
 };
 
 export type AppConfig = {
+  scope?: {
+    include_projects?: string[];
+  };
   toggl: TogglConfig;
   toggl_api?: {
     api_token?: string;
@@ -111,6 +114,7 @@ export type MapperSummary = {
   input_path: string;
   redacted_logging: boolean;
   parser_usage: Record<string, number>;
+  skipped_entries: number;
   total_output_items: number;
   total_exception_items: number;
   total_rounded_minutes: number;
