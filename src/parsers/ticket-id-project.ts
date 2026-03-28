@@ -1,12 +1,11 @@
-export const defaultParser = {
-  name: "default",
-  parseEntry(entry, context) {
-    const ticketPatterns = context.ticketIdRegexes;
-    const looksLikeTicket = ticketPatterns.some((regex) => regex.test(entry.task));
-    const meetingTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
+import type { ParsedEntry, ParserContext, ProjectParser, TogglEntry } from "../types.ts";
 
-    if (context.meetingTaskNames.includes(entry.task) || meetingTag) {
-      const bucket = meetingTag ? context.meetingBucketTags[meetingTag] : null;
+export const ticketIdProjectParser: ProjectParser = {
+  name: "ticket-id-project",
+  parseEntry(entry: TogglEntry, context: ParserContext): ParsedEntry {
+    if (context.meetingTaskNames.includes(entry.task)) {
+      const bucketTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
+      const bucket = bucketTag ? context.meetingBucketTags[bucketTag] : null;
       return {
         entryType: "meeting",
         taskId: null,
@@ -18,13 +17,14 @@ export const defaultParser = {
       };
     }
 
-    if (looksLikeTicket) {
+    const isTicket = context.ticketIdRegexes.some((regex) => regex.test(entry.task));
+    if (isTicket) {
       const activityTag = entry.tags.find((tag) => context.activityDescriptionTags[tag]);
       return {
         entryType: "ticket_work",
         taskId: entry.task,
         activityCode: null,
-        targetDescription: activityTag ? context.activityDescriptionTags[activityTag] : entry.tags[0] ?? "Work",
+        targetDescription: activityTag ? context.activityDescriptionTags[activityTag] : (entry.tags[0] ?? "Work"),
         meetingBucket: null,
         needsReview: !activityTag,
         reviewReasons: activityTag ? [] : ["Ticket entry is missing a recognized activity tag."]
@@ -38,7 +38,7 @@ export const defaultParser = {
       targetDescription: entry.tags[0] ?? "Other",
       meetingBucket: null,
       needsReview: true,
-      reviewReasons: ["Entry did not match known ticket or meeting conventions."]
+      reviewReasons: ["Project-specific parser could not classify the entry."]
     };
   }
 };

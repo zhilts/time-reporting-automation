@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { PrimitiveRecord } from "./types.ts";
 
-function splitCsvLine(line) {
-  const cells = [];
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
   let current = "";
   let inQuotes = false;
 
@@ -34,7 +35,7 @@ function splitCsvLine(line) {
   return cells.map((cell) => cell.trim());
 }
 
-function parseCsv(content) {
+function parseCsv(content: string): PrimitiveRecord[] {
   const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length === 0) {
     return [];
@@ -43,7 +44,7 @@ function parseCsv(content) {
   const headers = splitCsvLine(lines[0]);
   return lines.slice(1).map((line) => {
     const values = splitCsvLine(line);
-    const row = {};
+    const row: PrimitiveRecord = {};
     headers.forEach((header, index) => {
       row[header] = values[index] ?? "";
     });
@@ -51,16 +52,16 @@ function parseCsv(content) {
   });
 }
 
-export function ensureDirectory(dirPath) {
+export function ensureDirectory(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
-export function readInputFile(inputPath) {
+export function readInputFile(inputPath: string): unknown[] {
   const resolvedPath = path.resolve(inputPath);
   const content = fs.readFileSync(resolvedPath, "utf8");
 
   if (resolvedPath.endsWith(".json")) {
-    return JSON.parse(content);
+    return JSON.parse(content) as unknown[];
   }
 
   if (resolvedPath.endsWith(".csv")) {
@@ -70,7 +71,7 @@ export function readInputFile(inputPath) {
   throw new Error(`Unsupported input format: ${resolvedPath}`);
 }
 
-export function writeJson(filePath, value) {
+export function writeJson(filePath: string, value: unknown): void {
   ensureDirectory(path.dirname(filePath));
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2) + "\n", "utf8");
 }

@@ -1,10 +1,21 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { getParserByName } from "./parsers/index.js";
-import { ensureDirectory, readInputFile, writeJson } from "./io.js";
-import { loadConfig, normalizeProjectName } from "./config.js";
+import { getParserByName } from "./parsers/index.ts";
+import { ensureDirectory, readInputFile, writeJson } from "./io.ts";
+import { loadConfig, normalizeProjectName } from "./config.ts";
+import type {
+  AppConfig,
+  MapperRunOptions,
+  MapperSummary,
+  ParserContext,
+  PrimitiveRecord,
+  ReportItem,
+  TogglEntry
+} from "./types.ts";
 
-function parseMinutes(value) {
+type BaseItem = ReportItem;
+
+function parseMinutes(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.round(value);
   }
@@ -25,7 +36,7 @@ function parseMinutes(value) {
   throw new Error(`Unsupported duration value: ${stringValue}`);
 }
 
-function pickField(record, aliases) {
+function pickField(record: PrimitiveRecord, aliases: string[]): unknown {
   for (const alias of aliases) {
     if (record[alias] !== undefined && record[alias] !== null && String(record[alias]).trim() !== "") {
       return record[alias];
@@ -34,7 +45,7 @@ function pickField(record, aliases) {
   return undefined;
 }
 
-function normalizeTags(rawTags, separator) {
+function normalizeTags(rawTags: unknown, separator: string): string[] {
   if (Array.isArray(rawTags)) {
     return rawTags.map((tag) => String(tag).trim()).filter(Boolean);
   }
@@ -45,12 +56,20 @@ function normalizeTags(rawTags, separator) {
     .filter(Boolean);
 }
 
-function normalizeRecords(rawEntries, config) {
+function toRecord(value: unknown): PrimitiveRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Input row is not an object.");
+  }
+  return value as PrimitiveRecord;
+}
+
+function normalizeRecords(rawEntries: unknown[], config: AppConfig): TogglEntry[] {
   const aliases = config.toggl.field_aliases;
   const separator = config.toggl.tags_separator ?? ",";
 
-  return rawEntries.map((record, index) => {
-    const entry = {
+  return rawEntries.map((value, index) => {
+    const record = toRecord(value);
+    const entry: TogglEntry = {
       id: String(pickField(record, aliases.id) ?? `row-${index + 1}`),
       start: String(pickField(record, aliases.start) ?? ""),
       duration_minutes: parseMinutes(pickField(record, aliases.duration_minutes) ?? 0),
@@ -62,21 +81,19 @@ function normalizeRecords(rawEntries, config) {
     };
 
     const missingFields = config.toggl.required_fields.filter((fieldName) => {
-      const value = entry[fieldName];
-      return value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+      const fieldValue = entry[fieldName as keyof TogglEntry];
+      return fieldValue === undefined || fieldValue === null || fieldValue === "" || (Array.isArray(fieldValue) && fieldValue.length === 0);
     });
 
     if (missingFields.length > 0) {
-      const error = new Error(`Entry ${entry.id} is missing required fields: ${missingFields.join(", ")}`);
-      error.record = record;
-      throw error;
+      throw new Error(`Entry ${entry.id} is missing required fields: ${missingFields.join(", ")}`);
     }
 
     return entry;
   });
 }
 
-function roundMinutes(minutes, increment, policy) {
+function roundMinutes(minutes: number, increment: number, policy: "nearest" | "ceil" | "floor"): number {
   if (policy === "ceil") {
     return Math.max(increment, Math.ceil(minutes / increment) * increment);
   }
@@ -88,15 +105,20 @@ function roundMinutes(minutes, increment, policy) {
   return Math.max(increment, Math.round(minutes / increment) * increment);
 }
 
-function hashValue(value) {
+function hashValue(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
-function toWorkDate(start) {
+function toWorkDate(start: string): string {
   return start.slice(0, 10);
 }
 
-function createParserContext(config, normalizedProjectName, parserName, redactedLogging) {
+function createParserContext(
+  config: AppConfig,
+  normalizedProjectName: string,
+  parserName: string,
+  redactedLogging: boolean
+): ParserContext {
   return {
     normalizedProjectName,
     parserName,
@@ -110,7 +132,7 @@ function createParserContext(config, normalizedProjectName, parserName, redacted
   };
 }
 
-function toGroupedKey(baseItem) {
+function toGroupedKey(baseItem: BaseItem): string {
   if (baseItem.entry_type === "ticket_work") {
     return [
       baseItem.entry_type,
@@ -131,10 +153,10 @@ function toGroupedKey(baseItem) {
     ].join("|");
   }
 
-  return [baseItem.entry_type, baseItem.work_date, baseItem.source_ids[0]].join("|");
+  return [baseItem.entry_type, baseItem.work_date, baseItem.source_ids[0] ?? ""].join("|");
 }
 
-function buildBaseItem(entry, config, redactedLogging) {
+function buildBaseItem(entry: TogglEntry, config: AppConfig, redactedLogging: boolean): BaseItem {
   const normalizedProjectName = normalizeProjectName(entry.project, config.parser_factory.project_aliases ?? {});
   const parserName =
     config.parser_factory.project_parser_map?.[normalizedProjectName] ?? config.parser_factory.default_parser ?? "default";
@@ -142,14 +164,13 @@ function buildBaseItem(entry, config, redactedLogging) {
   const context = createParserContext(config, normalizedProjectName, parserName, redactedLogging);
   const parsed = parser.parseEntry(entry, context);
   const projectCode = config.project_code_map?.[normalizedProjectName];
-  const needsProjectReview = !projectCode;
-  const reviewReasons = [...(parsed.reviewReasons ?? [])];
+  const reviewReasons = [...parsed.reviewReasons];
 
-  if (needsProjectReview) {
+  if (!projectCode) {
     reviewReasons.push("Project is missing a target project code mapping.");
   }
 
-  const redactedSourceSnapshot = {
+  const redactedSourceSnapshot: PrimitiveRecord = {
     source_id_suffix: entry.id.slice(-6),
     source_hash: hashValue(entry.id),
     has_description: Boolean(entry.description),
@@ -167,15 +188,15 @@ function buildBaseItem(entry, config, redactedLogging) {
     activity_code: parsed.activityCode,
     target_description: parsed.targetDescription,
     meeting_bucket: parsed.meetingBucket,
-    needs_review: Boolean(parsed.needsReview) || needsProjectReview,
+    needs_review: parsed.needsReview || !projectCode,
     review_reasons: reviewReasons,
     idempotency_key: "",
     source_snapshot: redactedSourceSnapshot
   };
 }
 
-function aggregateBaseItems(baseItems, config) {
-  const grouped = new Map();
+function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportItem[] {
+  const grouped = new Map<string, BaseItem>();
 
   for (const item of baseItems) {
     const groupKey = toGroupedKey(item);
@@ -220,16 +241,15 @@ function aggregateBaseItems(baseItems, config) {
   });
 }
 
-function redactItem(item) {
+function redactItem(item: ReportItem): ReportItem {
   return {
     ...item,
-    source_ids: item.source_ids.map((sourceId) => `...${String(sourceId).slice(-6)}`),
-    source_snapshot: item.source_snapshot
+    source_ids: item.source_ids.map((sourceId) => `...${String(sourceId).slice(-6)}`)
   };
 }
 
-function buildExceptions(baseItems, aggregatedItems, redactedLogging) {
-  const detailed = [];
+function buildExceptions(baseItems: BaseItem[], aggregatedItems: ReportItem[], redactedLogging: boolean): PrimitiveRecord[] {
+  const detailed: PrimitiveRecord[] = [];
 
   for (const item of [...baseItems, ...aggregatedItems]) {
     if (!item.needs_review) {
@@ -250,7 +270,13 @@ function buildExceptions(baseItems, aggregatedItems, redactedLogging) {
   return detailed;
 }
 
-function buildRunSummary(inputPath, parserCounts, aggregatedItems, exceptions, redactedLogging) {
+function buildRunSummary(
+  inputPath: string,
+  parserCounts: Record<string, number>,
+  aggregatedItems: ReportItem[],
+  exceptions: PrimitiveRecord[],
+  redactedLogging: boolean
+): MapperSummary {
   return {
     input_path: inputPath,
     redacted_logging: redactedLogging,
@@ -268,11 +294,11 @@ export function runMapper({
   configPath = "./config/mapping.json",
   privateConfigPath = "./config/private.mapping.json",
   redact = true
-}) {
+}: MapperRunOptions): MapperSummary {
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const rawEntries = readInputFile(path.resolve(rootDir, inputPath));
   const normalizedEntries = normalizeRecords(rawEntries, config);
-  const parserCounts = {};
+  const parserCounts: Record<string, number> = {};
 
   const baseItems = normalizedEntries.map((entry) => {
     const normalizedProjectName = normalizeProjectName(entry.project, config.parser_factory.project_aliases ?? {});
