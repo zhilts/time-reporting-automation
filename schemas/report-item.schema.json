@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportItem",
+  "type": "object",
+  "required": [
+    "source_ids",
+    "entry_type",
+    "work_date",
+    "duration_minutes_raw",
+    "duration_minutes_rounded",
+    "target_project_code",
+    "target_description",
+    "idempotency_key"
+  ],
+  "properties": {
+    "source_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "entry_type": {
+      "type": "string",
+      "enum": ["ticket_work", "meeting", "other"]
+    },
+    "work_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "task_id": {
+      "type": ["string", "null"]
+    },
+    "duration_minutes_raw": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "duration_minutes_rounded": {
+      "type": "integer",
+      "minimum": 30,
+      "multipleOf": 30
+    },
+    "target_project_code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "activity_code": {
+      "type": ["string", "null"]
+    },
+    "target_description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "meeting_bucket": {
+      "type": ["string", "null"]
+    },
+    "needs_review": {
+      "type": "boolean",
+      "default": false
+    },
+    "review_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_snapshot": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

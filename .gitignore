@@ -1,0 +1,6 @@
+config/private.mapping.yaml
+runtime/
+*.log
+*.jsonl
+.idea/
+.DS_Store
