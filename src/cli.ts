@@ -6,7 +6,7 @@ import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
 import { launchConfiguredBrowser } from "./browser-launch.ts";
 import { inspectConfiguredBrowser } from "./browser-inspect.ts";
-import { repairWeekCurrent } from "./playwright-repair.ts";
+import { repairWeekCurrent, resetWeekCurrent } from "./playwright-repair.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -53,6 +53,7 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts launch-browser [--url <url>] [--config <path>] [--private-config <path>]");
   console.log("  node ./src/cli.ts inspect-browser [--url <url>] [--config <path>] [--private-config <path>]");
   console.log("  node ./src/cli.ts repair-week-current [--plan-path <path>] [--state-path <path>] [--output <path>] [--config <path>] [--private-config <path>]");
+  console.log("  node ./src/cli.ts reset-week-current [--state-path <path>] [--plan-path <path>] [--config <path>] [--private-config <path>]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -202,6 +203,19 @@ if (command === "repair-week-current") {
     planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.week-current.json",
     statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.week-current.json",
     outputPath: getStringArg(args, "output") ?? "./runtime/output/week-current/repair-summary.json"
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "reset-week-current") {
+  const summary = await resetWeekCurrent({
+    rootDir,
+    configPath,
+    privateConfigPath,
+    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.week-current.json",
+    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.week-current.json"
   });
 
   console.log(JSON.stringify(summary, null, 2));

@@ -1,6 +1,7 @@
 import type { BrowserContext, Dialog, Page } from "playwright";
 import path from "node:path";
 import { loadConfig, loadJsonFile } from "./config.ts";
+import fs from "node:fs";
 import { writeJson } from "./io.ts";
 import type { AppConfig, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
 
@@ -23,6 +24,11 @@ type RepairWeekSummary = {
   uploaded_keys: string[];
   reused_existing_keys: string[];
   output_path: string;
+};
+
+type ResetWeekSummary = {
+  deleted_record_ids: string[];
+  removed_files: string[];
 };
 
 async function openConfiguredContext(config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
@@ -104,6 +110,19 @@ function isWrongAggregatedCommunication(record: ExistingRecord): boolean {
       || record.text.includes("25.03.2026")
       || record.text.includes("26.03.2026")
     );
+}
+
+function resetUploadStateFile(state: UploadState): UploadState {
+  const now = new Date().toISOString();
+
+  for (const item of state.items) {
+    item.status = "pending";
+    item.last_error = null;
+    item.updated_at = null;
+  }
+
+  state.updated_at = now;
+  return state;
 }
 
 async function deleteRecord(page: Page, recordId: string): Promise<void> {
@@ -231,8 +250,7 @@ export async function repairWeekCurrent({
 
   const plan = loadJsonFile<UploadPlan>(path.resolve(rootDir, planPath), true) as UploadPlan;
   const state = loadJsonFile<UploadState>(path.resolve(rootDir, statePath), true) as UploadState;
-  const communicationItems = plan.items.filter((item) => item.task_label === "Communication");
-  const existingCorrectItems = plan.items.filter((item) => item.task_label !== "Communication");
+  const targetItems = plan.items.filter((item) => item.upload_ready);
 
   const context = await openConfiguredContext(browserLaunch);
   const deletedRecordIds: string[] = [];
@@ -254,14 +272,18 @@ export async function repairWeekCurrent({
     }
 
     const existingAfterDelete = await collectExistingRecords(page);
-    for (const item of existingCorrectItems) {
+    for (const item of targetItems) {
       if (matchesExistingRecord(item, existingAfterDelete)) {
         reusedExistingKeys.push(item.idempotency_key);
       }
     }
     console.error(`[repair] reused existing non-communication items: ${reusedExistingKeys.length}`);
 
-    for (const item of communicationItems) {
+    for (const item of targetItems) {
+      if (reusedExistingKeys.includes(item.idempotency_key)) {
+        continue;
+      }
+
       await addRecord(page, item);
       uploadedKeys.push(item.idempotency_key);
     }
@@ -282,4 +304,71 @@ export async function repairWeekCurrent({
   } finally {
     await context.close().catch(() => {});
   }
+}
+
+export async function resetWeekCurrent({
+  rootDir,
+  configPath = "./config/mapping.json",
+  privateConfigPath = "./config/private.mapping.json",
+  statePath = "./runtime/state/upload-state.week-current.json",
+  planPath = "./runtime/state/upload-plan.week-current.json",
+  repairSummaryPath = "./runtime/output/week-current/repair-summary.json"
+}: {
+  rootDir: string;
+  configPath?: string;
+  privateConfigPath?: string;
+  statePath?: string;
+  planPath?: string;
+  repairSummaryPath?: string;
+}): Promise<ResetWeekSummary> {
+  const config = loadConfig(rootDir, configPath, privateConfigPath);
+  const browserLaunch = config.browser_launch;
+  const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
+  if (!browserLaunch?.enabled || !targetUrl) {
+    throw new Error("Browser launch is not configured.");
+  }
+
+  const context = await openConfiguredContext(browserLaunch);
+  const deletedRecordIds: string[] = [];
+
+  try {
+    const page = await resolveTargetPage(context, targetUrl);
+    await page.bringToFront().catch(() => {});
+    await waitForStablePage(page);
+
+    const existingRecords = await collectExistingRecords(page);
+    console.error(`[reset] deleting current week records: ${existingRecords.length}`);
+
+    for (const record of existingRecords) {
+      await deleteRecord(page, record.recordId);
+      deletedRecordIds.push(record.recordId);
+    }
+  } finally {
+    await context.close().catch(() => {});
+  }
+
+  const removedFiles: string[] = [];
+  const absoluteStatePath = path.resolve(rootDir, statePath);
+  const absolutePlanPath = path.resolve(rootDir, planPath);
+  const absoluteRepairSummaryPath = path.resolve(rootDir, repairSummaryPath);
+
+  if (fs.existsSync(absoluteStatePath)) {
+    const state = loadJsonFile<UploadState>(absoluteStatePath, true) as UploadState;
+    writeJson(absoluteStatePath, resetUploadStateFile(state));
+    removedFiles.push(absoluteStatePath);
+  }
+
+  for (const filePath of [absolutePlanPath, absoluteRepairSummaryPath]) {
+    if (!fs.existsSync(filePath)) {
+      continue;
+    }
+
+    fs.unlinkSync(filePath);
+    removedFiles.push(filePath);
+  }
+
+  return {
+    deleted_record_ids: deletedRecordIds,
+    removed_files: removedFiles
+  };
 }
