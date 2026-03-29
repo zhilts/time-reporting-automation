@@ -46,6 +46,31 @@
     "increment_minutes": 30,
     "policy": "nearest"
   },
+  "upload": {
+    "target_page_url": "https://internal.example.local/time-reports",
+    "project_option_labels": {
+      "INTERNAL_PROJECT_CODE": "INTERNAL_PROJECT_CODE"
+    },
+    "default_task_by_project": {
+      "INTERNAL_PROJECT_CODE": "CategoryA"
+    },
+    "task_by_activity_code": {
+      "INTERNAL_PROJECT_CODE": {
+        "CategoryA": "CategoryA",
+        "CategoryB": "CategoryB",
+        "CategoryC": "CategoryC"
+      }
+    },
+    "task_matchers_by_project": {
+      "INTERNAL_PROJECT_CODE": [
+        {
+          "match_type": "prefix",
+          "pattern": "Review",
+          "task_label": "CategoryB"
+        }
+      ]
+    }
+  },
   "rules": {
     "unknown_project_code": "needs_review",
     "unknown_activity_tag": "needs_review",

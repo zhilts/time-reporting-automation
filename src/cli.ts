@@ -116,6 +116,8 @@ if (command === "prepare-upload") {
   const summary = prepareUpload({
     rootDir,
     inputPath: getStringArg(args, "input") ?? "./runtime/output/latest/report_items.json",
+    configPath,
+    privateConfigPath,
     planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.json",
     statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.json"
   });

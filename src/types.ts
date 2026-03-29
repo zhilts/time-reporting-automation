@@ -80,6 +80,20 @@ export type AppConfig = {
   rounding: RoundingConfig;
   rules?: Record<string, string>;
   privacy?: Record<string, unknown>;
+  upload?: {
+    target_page_url?: string;
+    project_option_labels?: Record<string, string>;
+    default_task_by_project?: Record<string, string>;
+    task_by_activity_code?: Record<string, Record<string, string>>;
+    task_matchers_by_project?: Record<
+      string,
+      Array<{
+        match_type: "exact" | "prefix" | "includes" | "regex";
+        pattern: string;
+        task_label: string;
+      }>
+    >;
+  };
 };
 
 export type ParserContext = {
@@ -151,11 +165,19 @@ export type CliArgs = Record<string, string | boolean | string[] | undefined> & 
 export type UploadPlanItem = {
   idempotency_key: string;
   target_project_code: string;
+  project_label: string;
   target_description: string;
+  activity_code: string | null;
   task_id: string | null;
+  task_label: string | null;
   duration_minutes_rounded: number;
+  effort_hours: string;
   work_date: string;
+  start_date: string;
+  finish_date: string;
   entry_type: ReportItem["entry_type"];
+  upload_ready: boolean;
+  upload_blockers: string[];
 };
 
 export type UploadPlan = {
@@ -167,7 +189,7 @@ export type UploadPlan = {
 
 export type UploadStateItem = {
   idempotency_key: string;
-  status: "pending" | "uploaded" | "failed" | "skipped";
+  status: "pending" | "uploaded" | "failed" | "skipped" | "blocked";
   last_error: string | null;
   updated_at: string | null;
 };
@@ -180,6 +202,8 @@ export type UploadState = {
 export type PrepareUploadOptions = {
   rootDir: string;
   inputPath: string;
+  configPath?: string;
+  privateConfigPath?: string;
   planPath?: string;
   statePath?: string;
 };
@@ -189,4 +213,6 @@ export type PrepareUploadSummary = {
   plan_path: string;
   state_path: string;
   item_count: number;
+  ready_item_count: number;
+  blocked_item_count: number;
 };

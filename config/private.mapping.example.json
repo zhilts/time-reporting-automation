@@ -34,5 +34,27 @@
   "entry_classification": {
     "meeting_description_patterns": ["standup", "sync", "meeting", "daily"],
     "ticket_id_patterns": ["^ABC-\\d+$", "^XYZ-\\d+$"]
+  },
+  "upload": {
+    "target_page_url": "https://internal.example.local/time-reports",
+    "project_option_labels": {
+      "INTERNAL_CODE_HERE": "UI Project Label"
+    },
+    "task_by_activity_code": {
+      "INTERNAL_CODE_HERE": {
+        "Real Target Description A": "UI Task Label A",
+        "Real Target Description B": "UI Task Label B",
+        "Communication": "Communication"
+      }
+    },
+    "task_matchers_by_project": {
+      "ANOTHER_INTERNAL_CODE": [
+        {
+          "match_type": "prefix",
+          "pattern": "PPR",
+          "task_label": "Performance Review"
+        }
+      ]
+    }
   }
 }

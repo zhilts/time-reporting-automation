@@ -32,7 +32,7 @@ export const ticketIdProjectParser: ProjectParser = {
       return {
         entryType: "meeting",
         taskId: null,
-        activityCode: null,
+        activityCode: "Communication",
         targetDescription: bucket ?? "Meeting",
         meetingBucket: bucket,
         needsReview: !bucket,
@@ -43,22 +43,24 @@ export const ticketIdProjectParser: ProjectParser = {
     const ticketId = extractTicketId(entry, context);
     if (ticketId) {
       const activityTag = entry.tags.find((tag) => context.activityDescriptionTags[tag]);
+      const activityCode = activityTag ? context.activityDescriptionTags[activityTag] : (entry.tags[0] ?? "Work");
       return {
         entryType: "ticket_work",
         taskId: ticketId,
-        activityCode: null,
-        targetDescription: activityTag ? context.activityDescriptionTags[activityTag] : (entry.tags[0] ?? "Work"),
+        activityCode,
+        targetDescription: activityCode,
         meetingBucket: null,
         needsReview: !activityTag,
         reviewReasons: activityTag ? [] : ["Ticket entry is missing a recognized activity tag."]
       };
     }
 
+    const fallbackActivity = context.activityDescriptionTags[entry.tags[0] ?? ""] ?? entry.tags[0] ?? entry.description ?? "Other";
     return {
       entryType: "other",
       taskId: null,
-      activityCode: null,
-      targetDescription: context.activityDescriptionTags[entry.tags[0] ?? ""] ?? entry.tags[0] ?? entry.description ?? "Other",
+      activityCode: fallbackActivity,
+      targetDescription: fallbackActivity,
       meetingBucket: null,
       needsReview: entry.tags.length === 0,
       reviewReasons: entry.tags.length === 0 ? ["Entry has no tag and did not match ticket or meeting conventions."] : []
