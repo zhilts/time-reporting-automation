@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { runMapper } from "./mapper.ts";
 import { loadConfig } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
-import { prepareUpload } from "./uploader.ts";
+import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -45,6 +45,8 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts fetch-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output <path>]");
   console.log("  node ./src/cli.ts sync-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output-dir <dir>] [--redact]");
   console.log("  node ./src/cli.ts prepare-upload [--input <path>] [--plan-path <path>] [--state-path <path>]");
+  console.log("  node ./src/cli.ts select-upload-batch [--plan-path <path>] [--state-path <path>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD] [--limit N]");
+  console.log("  node ./src/cli.ts update-upload-state --keys <id1,id2> --status <pending|uploaded|failed|skipped|blocked> [--state-path <path>] [--last-error <text>]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -120,6 +122,42 @@ if (command === "prepare-upload") {
     privateConfigPath,
     planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.json",
     statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.json"
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "select-upload-batch") {
+  const limitValue = getStringArg(args, "limit");
+  const summary = selectUploadBatch({
+    rootDir,
+    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.json",
+    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.json",
+    dateFrom: getStringArg(args, "date-from"),
+    dateTo: getStringArg(args, "date-to"),
+    limit: limitValue ? Number(limitValue) : undefined
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "update-upload-state") {
+  const keys = (getStringArg(args, "keys") ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const status = getStringArg(args, "status");
+
+  if (!keys.length || !status) {
+    printUsage();
+    process.exit(1);
+  }
+
+  const summary = updateUploadState({
+    rootDir,
+    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.json",
+    idempotencyKeys: keys,
+    status: status as "pending" | "uploaded" | "failed" | "skipped" | "blocked",
+    lastError: getStringArg(args, "last-error") ?? null
   });
 
   console.log(JSON.stringify(summary, null, 2));
