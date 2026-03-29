@@ -135,6 +135,7 @@ function createParserContext(
     redactedLogging,
     meetingTaskNames: config.entry_classification.meeting_task_names ?? [],
     meetingDescriptionPatterns: config.entry_classification.meeting_description_patterns ?? [],
+    meetingDescriptionMode: config.entry_classification.meeting_description_mode ?? "bucket",
     ticketIdRegexes: (config.entry_classification.ticket_id_patterns ?? []).map((pattern) => new RegExp(pattern)),
     ticketIdSources: config.entry_classification.ticket_id_sources ?? ["task"],
     meetingBucketTags: config.meeting_bucket_tags ?? {},
@@ -161,7 +162,8 @@ function toGroupedKey(baseItem: BaseItem): string {
       baseItem.entry_type,
       baseItem.work_date,
       baseItem.target_project_code,
-      baseItem.meeting_bucket ?? "unbucketed"
+      baseItem.meeting_bucket ?? "unbucketed",
+      baseItem.target_description
     ].join("|");
   }
 

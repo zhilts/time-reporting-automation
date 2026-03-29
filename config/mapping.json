@@ -39,6 +39,7 @@
   "entry_classification": {
     "meeting_task_names": ["Meeting"],
     "meeting_description_patterns": ["standup", "sync", "meeting", "daily", "1-1", "1:1", "interview"],
+    "meeting_description_mode": "bucket",
     "ticket_id_patterns": ["^[A-Z]+-\\d+$"],
     "ticket_id_sources": ["task", "description"]
   },

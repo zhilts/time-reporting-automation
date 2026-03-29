@@ -23,20 +23,36 @@ function isMeetingLike(entry: TogglEntry, context: ParserContext): boolean {
   return context.meetingDescriptionPatterns.some((pattern) => description.includes(pattern.toLowerCase()));
 }
 
+function resolveMeetingDescription(entry: TogglEntry, context: ParserContext, bucket: string | null): string {
+  const description = entry.description.trim();
+
+  if (context.meetingDescriptionMode === "preserve") {
+    return description || bucket || "Communication";
+  }
+
+  if (context.meetingDescriptionMode === "aggregate_all") {
+    return "Communication";
+  }
+
+  return bucket ?? description ?? "Communication";
+}
+
 export const ticketIdProjectParser: ProjectParser = {
   name: "ticket-id-project",
   parseEntry(entry: TogglEntry, context: ParserContext): ParsedEntry {
     if (isMeetingLike(entry, context)) {
       const bucketTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
       const bucket = bucketTag ? context.meetingBucketTags[bucketTag] : null;
+      const targetDescription = resolveMeetingDescription(entry, context, bucket);
+      const needsReview = context.meetingDescriptionMode === "bucket" ? !bucket : targetDescription.trim().length === 0;
       return {
         entryType: "meeting",
         taskId: null,
         activityCode: "Communication",
-        targetDescription: bucket ?? "Meeting",
+        targetDescription,
         meetingBucket: bucket,
-        needsReview: !bucket,
-        reviewReasons: bucket ? [] : ["Meeting entry is missing a recognized meeting bucket tag."]
+        needsReview,
+        reviewReasons: needsReview ? ["Meeting entry is missing a usable description or recognized communication grouping."] : []
       };
     }
 

@@ -53,6 +53,7 @@ export type ParserFactoryConfig = {
 export type EntryClassificationConfig = {
   meeting_task_names?: string[];
   meeting_description_patterns?: string[];
+  meeting_description_mode?: "bucket" | "preserve" | "aggregate_all";
   ticket_id_patterns?: string[];
   ticket_id_sources?: Array<"task" | "description">;
 };
@@ -102,6 +103,7 @@ export type ParserContext = {
   redactedLogging: boolean;
   meetingTaskNames: string[];
   meetingDescriptionPatterns: string[];
+  meetingDescriptionMode: "bucket" | "preserve" | "aggregate_all";
   ticketIdRegexes: RegExp[];
   ticketIdSources: Array<"task" | "description">;
   meetingBucketTags: Record<string, string>;
