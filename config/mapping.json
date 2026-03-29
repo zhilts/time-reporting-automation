@@ -77,17 +77,11 @@
   },
   "browser_launch": {
     "enabled": false,
-    "provider": "playwright",
     "channel": "chrome",
     "headless": false,
     "user_data_dir": "/ABSOLUTE/PATH/TO/CHROME/USER/DATA",
     "profile_directory": "Profile 1",
-    "target_url": "https://internal.example.local/time-reports",
-    "args": [],
-    "notes": [
-      "Use Playwright chromium.launchPersistentContext(userDataDir, { channel: 'chrome', args: ['--profile-directory=...'] }).",
-      "Playwright docs warn that automating the primary Chrome user data dir can break due to Chrome policy changes. Prefer a dedicated automation copy when possible."
-    ]
+    "args": []
   },
   "rules": {
     "unknown_project_code": "needs_review",

@@ -300,7 +300,7 @@ export async function resetWeekCurrent({
   };
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const browserLaunch = config.browser_launch;
-  const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
+  const targetUrl = config.upload?.target_page_url;
   if (!browserLaunch?.enabled || !targetUrl) {
     throw new Error("Browser launch is not configured.");
   }
@@ -419,7 +419,7 @@ export async function syncWeekCurrent({
   });
 
   const browserLaunch = config.browser_launch;
-  const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
+  const targetUrl = config.upload?.target_page_url;
   if (!browserLaunch?.enabled || !targetUrl) {
     throw new Error("Browser launch is not configured.");
   }

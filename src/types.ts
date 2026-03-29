@@ -76,8 +76,6 @@ export type AppConfig = {
   toggl: TogglConfig;
   toggl_api?: {
     api_token?: string;
-    default_start_date?: string;
-    default_end_date?: string;
   };
   parser_factory: ParserFactoryConfig;
   project_code_map?: Record<string, string>;
@@ -104,15 +102,12 @@ export type AppConfig = {
   };
   browser_launch?: {
     enabled?: boolean;
-    provider?: "playwright";
     channel?: "chrome" | "chromium" | "msedge";
     headless?: boolean;
     user_data_dir?: string;
     profile_directory?: string;
-    target_url?: string;
     executable_path?: string;
     args?: string[];
-    notes?: string[];
   };
 };
 

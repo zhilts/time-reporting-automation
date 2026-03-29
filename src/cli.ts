@@ -76,8 +76,8 @@ if (command === "map") {
 
 if (command === "fetch-toggl" || command === "sync-toggl") {
   const config = loadConfig(rootDir, configPath, privateConfigPath);
-  const startDate = getStringArg(args, "start-date") ?? config.toggl_api?.default_start_date ?? null;
-  const endDate = getStringArg(args, "end-date") ?? config.toggl_api?.default_end_date ?? null;
+  const startDate = getStringArg(args, "start-date") ?? null;
+  const endDate = getStringArg(args, "end-date") ?? null;
   const before = getStringArg(args, "before") ?? null;
   const since = getStringArg(args, "since") ?? null;
   const apiToken = process.env.TOGGL_API_TOKEN ?? config.toggl_api?.api_token ?? null;

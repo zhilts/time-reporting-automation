@@ -8,9 +8,7 @@
     ]
   },
   "toggl_api": {
-    "api_token": "YOUR_TOGGL_API_TOKEN",
-    "default_start_date": "2026-03-01",
-    "default_end_date": "2026-03-31"
+    "api_token": "YOUR_TOGGL_API_TOKEN"
   },
   "parser_factory": {
     "project_parser_map": {
@@ -63,17 +61,10 @@
   },
   "browser_launch": {
     "enabled": true,
-    "provider": "playwright",
     "channel": "chrome",
     "headless": false,
     "user_data_dir": "/Users/you/Library/Application Support/Google/Chrome",
     "profile_directory": "Profile 1",
-    "target_url": "https://internal.example.local/time-reports",
-    "args": [],
-    "notes": [
-      "The Playwright path is launchPersistentContext(userDataDir, { channel: 'chrome', args: ['--profile-directory=...'] }).",
-      "Close Chrome before using the same user_data_dir.",
-      "If Chrome policy blocks the main user data dir, use a dedicated automation copy instead."
-    ]
+    "args": []
   }
 }
