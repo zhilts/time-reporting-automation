@@ -4,6 +4,7 @@ import { runMapper } from "./mapper.ts";
 import { loadConfig } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
+import { launchConfiguredBrowser } from "./browser-launch.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -47,6 +48,7 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts prepare-upload [--input <path>] [--plan-path <path>] [--state-path <path>]");
   console.log("  node ./src/cli.ts select-upload-batch [--plan-path <path>] [--state-path <path>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD] [--limit N]");
   console.log("  node ./src/cli.ts update-upload-state --keys <id1,id2> --status <pending|uploaded|failed|skipped|blocked> [--state-path <path>] [--last-error <text>]");
+  console.log("  node ./src/cli.ts launch-browser [--url <url>] [--config <path>] [--private-config <path>]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -158,6 +160,18 @@ if (command === "update-upload-state") {
     idempotencyKeys: keys,
     status: status as "pending" | "uploaded" | "failed" | "skipped" | "blocked",
     lastError: getStringArg(args, "last-error") ?? null
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "launch-browser") {
+  const summary = await launchConfiguredBrowser({
+    rootDir,
+    configPath,
+    privateConfigPath,
+    urlOverride: getStringArg(args, "url")
   });
 
   console.log(JSON.stringify(summary, null, 2));

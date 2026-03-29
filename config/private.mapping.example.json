@@ -57,5 +57,20 @@
         }
       ]
     }
+  },
+  "browser_launch": {
+    "enabled": true,
+    "provider": "playwright",
+    "channel": "chrome",
+    "headless": false,
+    "user_data_dir": "/Users/you/Library/Application Support/Google/Chrome",
+    "profile_directory": "Profile 1",
+    "target_url": "https://internal.example.local/time-reports",
+    "args": [],
+    "notes": [
+      "The Playwright path is launchPersistentContext(userDataDir, { channel: 'chrome', args: ['--profile-directory=...'] }).",
+      "Close Chrome before using the same user_data_dir.",
+      "If Chrome policy blocks the main user data dir, use a dedicated automation copy instead."
+    ]
   }
 }

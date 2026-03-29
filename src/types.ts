@@ -95,6 +95,18 @@ export type AppConfig = {
       }>
     >;
   };
+  browser_launch?: {
+    enabled?: boolean;
+    provider?: "playwright";
+    channel?: "chrome" | "chromium" | "msedge";
+    headless?: boolean;
+    user_data_dir?: string;
+    profile_directory?: string;
+    target_url?: string;
+    executable_path?: string;
+    args?: string[];
+    notes?: string[];
+  };
 };
 
 export type ParserContext = {
