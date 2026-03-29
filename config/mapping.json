@@ -43,6 +43,9 @@
     "ticket_id_patterns": ["^[A-Z]+-\\d+$"],
     "ticket_id_sources": ["task", "description"]
   },
+  "aggregation": {
+    "mode": "per_day"
+  },
   "rounding": {
     "increment_minutes": 30,
     "policy": "nearest"

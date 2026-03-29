@@ -123,6 +123,20 @@ function toWorkDate(start: string): string {
   return start.slice(0, 10);
 }
 
+function addDays(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function areConsecutiveDates(left: string, right: string): boolean {
+  return addDays(left, 1) === right;
+}
+
+function isSameOrEarlierDate(left: string, right: string): boolean {
+  return left <= right;
+}
+
 function createParserContext(
   config: AppConfig,
   normalizedProjectName: string,
@@ -149,7 +163,6 @@ function toGroupedKey(baseItem: BaseItem): string {
   if (baseItem.entry_type === "ticket_work") {
     return [
       baseItem.entry_type,
-      baseItem.work_date,
       baseItem.target_project_code,
       baseItem.task_id ?? "",
       baseItem.activity_code ?? "",
@@ -160,7 +173,6 @@ function toGroupedKey(baseItem: BaseItem): string {
   if (baseItem.entry_type === "meeting") {
     return [
       baseItem.entry_type,
-      baseItem.work_date,
       baseItem.target_project_code,
       baseItem.meeting_bucket ?? "unbucketed",
       baseItem.target_description
@@ -169,7 +181,6 @@ function toGroupedKey(baseItem: BaseItem): string {
 
   return [
     baseItem.entry_type,
-    baseItem.work_date,
     baseItem.target_project_code,
     baseItem.target_description,
     baseItem.task_id ?? "",
@@ -202,6 +213,8 @@ function buildBaseItem(entry: TogglEntry, config: AppConfig, redactedLogging: bo
     source_ids: [entry.id],
     entry_type: parsed.entryType,
     work_date: toWorkDate(entry.start),
+    start_work_date: toWorkDate(entry.start),
+    finish_work_date: toWorkDate(entry.start),
     task_id: parsed.taskId,
     duration_minutes_raw: entry.duration_minutes,
     duration_minutes_rounded: 0,
@@ -217,14 +230,34 @@ function buildBaseItem(entry: TogglEntry, config: AppConfig, redactedLogging: bo
 }
 
 function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportItem[] {
-  const grouped = new Map<string, BaseItem>();
+  const aggregationMode = config.aggregation?.mode ?? "per_day";
+  const sortedItems = [...baseItems].sort((left, right) => {
+    const byKey = toGroupedKey(left).localeCompare(toGroupedKey(right));
+    if (byKey !== 0) {
+      return byKey;
+    }
 
-  for (const item of baseItems) {
-    const groupKey = toGroupedKey(item);
-    const existing = grouped.get(groupKey);
+    return left.work_date.localeCompare(right.work_date);
+  });
 
-    if (!existing) {
-      grouped.set(groupKey, {
+  const aggregated: BaseItem[] = [];
+
+  for (const item of sortedItems) {
+    const previous = aggregated[aggregated.length - 1];
+    const sameLogicalKey = previous ? toGroupedKey(previous) === toGroupedKey(item) : false;
+    const sameDateGroup = sameLogicalKey
+      && previous
+      && isSameOrEarlierDate(item.start_work_date, previous.finish_work_date);
+    const canExtendDateRange = aggregationMode === "date_range"
+      && sameLogicalKey
+      && previous
+      && areConsecutiveDates(previous.finish_work_date, item.start_work_date);
+    const canMerge = aggregationMode === "date_range"
+      ? Boolean(sameDateGroup || canExtendDateRange)
+      : Boolean(sameDateGroup);
+
+    if (!previous || !canMerge) {
+      aggregated.push({
         ...item,
         source_ids: [...item.source_ids],
         review_reasons: [...item.review_reasons]
@@ -232,16 +265,18 @@ function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportIte
       continue;
     }
 
-    existing.duration_minutes_raw += item.duration_minutes_raw;
-    existing.source_ids.push(...item.source_ids);
-    existing.needs_review = existing.needs_review || item.needs_review;
-    existing.review_reasons = Array.from(new Set([...existing.review_reasons, ...item.review_reasons]));
+    previous.duration_minutes_raw += item.duration_minutes_raw;
+    previous.finish_work_date = item.finish_work_date;
+    previous.source_ids.push(...item.source_ids);
+    previous.needs_review = previous.needs_review || item.needs_review;
+    previous.review_reasons = Array.from(new Set([...previous.review_reasons, ...item.review_reasons]));
   }
 
-  return Array.from(grouped.values()).map((item) => {
+  return aggregated.map((item) => {
     const idBasis = [
       item.entry_type,
-      item.work_date,
+      item.start_work_date,
+      item.finish_work_date,
       item.target_project_code,
       item.task_id ?? "",
       item.activity_code ?? "",
@@ -251,6 +286,7 @@ function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportIte
 
     return {
       ...item,
+      work_date: item.start_work_date,
       source_ids: Array.from(new Set(item.source_ids)).sort(),
       duration_minutes_rounded: roundMinutes(
         item.duration_minutes_raw,
@@ -287,6 +323,8 @@ function buildExceptions(aggregatedItems: ReportItem[], redactedLogging: boolean
       idempotency_key: item.idempotency_key || null,
       entry_type: item.entry_type,
       work_date: item.work_date,
+      start_work_date: item.start_work_date,
+      finish_work_date: item.finish_work_date,
       target_project_code: item.target_project_code,
       task_id: redactedLogging && item.task_id ? `...${item.task_id.slice(-4)}` : item.task_id,
       resolution_action: fixInTrackerOrManualEntry ? "fix_in_tracker_or_manual_entry" : "review_mapping",

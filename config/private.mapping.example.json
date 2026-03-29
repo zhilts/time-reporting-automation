@@ -36,6 +36,9 @@
     "meeting_description_mode": "preserve",
     "ticket_id_patterns": ["^ABC-\\d+$", "^XYZ-\\d+$"]
   },
+  "aggregation": {
+    "mode": "date_range"
+  },
   "upload": {
     "target_page_url": "https://internal.example.local/time-reports",
     "project_option_labels": {

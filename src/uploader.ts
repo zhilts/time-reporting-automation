@@ -93,8 +93,8 @@ function toUploadPlanItem(item: ReportItem, config: AppConfig): UploadPlanItem {
     duration_minutes_rounded: item.duration_minutes_rounded,
     effort_hours: formatHours(item.duration_minutes_rounded),
     work_date: item.work_date,
-    start_date: formatDateForTarget(item.work_date),
-    finish_date: formatDateForTarget(item.work_date),
+    start_date: formatDateForTarget(item.start_work_date),
+    finish_date: formatDateForTarget(item.finish_work_date),
     entry_type: item.entry_type,
     upload_ready: uploadBlockers.length === 0,
     upload_blockers: uploadBlockers

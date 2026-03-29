@@ -15,6 +15,8 @@ export type ReportItem = {
   source_ids: string[];
   entry_type: "ticket_work" | "meeting" | "other";
   work_date: string;
+  start_work_date: string;
+  finish_work_date: string;
   task_id: string | null;
   duration_minutes_raw: number;
   duration_minutes_rounded: number;
@@ -63,6 +65,10 @@ export type RoundingConfig = {
   policy?: "nearest" | "ceil" | "floor";
 };
 
+export type AggregationConfig = {
+  mode?: "per_day" | "date_range";
+};
+
 export type AppConfig = {
   scope?: {
     include_projects?: string[];
@@ -78,6 +84,7 @@ export type AppConfig = {
   activity_description_tags?: Record<string, string>;
   meeting_bucket_tags?: Record<string, string>;
   entry_classification: EntryClassificationConfig;
+  aggregation?: AggregationConfig;
   rounding: RoundingConfig;
   rules?: Record<string, string>;
   privacy?: Record<string, unknown>;
