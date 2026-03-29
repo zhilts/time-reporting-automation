@@ -14,6 +14,9 @@ const WEEK_REPORT_PATH = "./runtime/output/week-current/report_items.json";
 const WEEK_PLAN_PATH = "./runtime/state/upload-plan.week-current.json";
 const WEEK_STATE_PATH = "./runtime/state/upload-state.week-current.json";
 const WEEK_SYNC_SUMMARY_PATH = "./runtime/output/week-current/sync-summary.json";
+const LEGACY_OUTPUT_DIR = "./runtime/output/latest";
+const LEGACY_PLAN_PATH = "./runtime/state/upload-plan.json";
+const LEGACY_STATE_PATH = "./runtime/state/upload-state.json";
 
 type WeekRange = {
   startDate: string;
@@ -40,8 +43,8 @@ export type ResetWeekCurrentSummary = {
   start_date: string;
   end_date: string;
   deleted_record_ids: string[];
-  reset_state_path: string | null;
   removed_files: string[];
+  removed_directories: string[];
 };
 
 function getCurrentWeekRange(): WeekRange {
@@ -93,17 +96,24 @@ function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): Uplo
   return state;
 }
 
-function resetUploadStateFile(state: UploadState): UploadState {
-  const now = new Date().toISOString();
+function pruneEmptyDirectory(directoryPath: string, stopAtPath: string, removedDirectories: string[]): void {
+  let currentPath = directoryPath;
+  const absoluteStopAtPath = path.resolve(stopAtPath);
 
-  for (const item of state.items) {
-    item.status = "pending";
-    item.last_error = null;
-    item.updated_at = null;
+  while (currentPath.startsWith(absoluteStopAtPath) && currentPath !== absoluteStopAtPath) {
+    if (!fs.existsSync(currentPath) || !fs.statSync(currentPath).isDirectory()) {
+      currentPath = path.dirname(currentPath);
+      continue;
+    }
+
+    if (fs.readdirSync(currentPath).length > 0) {
+      return;
+    }
+
+    fs.rmdirSync(currentPath);
+    removedDirectories.push(currentPath);
+    currentPath = path.dirname(currentPath);
   }
-
-  state.updated_at = now;
-  return state;
 }
 
 async function openConfiguredContext(config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
@@ -307,32 +317,50 @@ export async function resetWeekCurrent({
   }
 
   const removedFiles: string[] = [];
+  const removedDirectories: string[] = [];
+  const absoluteFetchPath = path.resolve(rootDir, WEEK_FETCH_PATH);
   const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);
   const absolutePlanPath = path.resolve(rootDir, WEEK_PLAN_PATH);
   const absoluteSyncSummaryPath = path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH);
+  const absoluteOutputDir = path.resolve(rootDir, WEEK_OUTPUT_DIR);
+  const absoluteLegacyPlanPath = path.resolve(rootDir, LEGACY_PLAN_PATH);
+  const absoluteLegacyStatePath = path.resolve(rootDir, LEGACY_STATE_PATH);
+  const absoluteLegacyOutputDir = path.resolve(rootDir, LEGACY_OUTPUT_DIR);
+  const runtimeRoot = path.resolve(rootDir, "./runtime");
 
-  let resetStatePath: string | null = null;
-  if (fs.existsSync(absoluteStatePath)) {
-    const state = loadJsonFile<UploadState>(absoluteStatePath, true) as UploadState;
-    writeJson(absoluteStatePath, resetUploadStateFile(state));
-    resetStatePath = absoluteStatePath;
-  }
-
-  for (const filePath of [absolutePlanPath, absoluteSyncSummaryPath]) {
+  for (const filePath of [
+    absoluteFetchPath,
+    absoluteStatePath,
+    absolutePlanPath,
+    absoluteSyncSummaryPath,
+    absoluteLegacyPlanPath,
+    absoluteLegacyStatePath
+  ]) {
     if (!fs.existsSync(filePath)) {
       continue;
     }
 
     fs.unlinkSync(filePath);
     removedFiles.push(filePath);
+    pruneEmptyDirectory(path.dirname(filePath), runtimeRoot, removedDirectories);
+  }
+
+  for (const directoryPath of [absoluteOutputDir, absoluteLegacyOutputDir]) {
+    if (!fs.existsSync(directoryPath)) {
+      continue;
+    }
+
+    fs.rmSync(directoryPath, { recursive: true, force: true });
+    removedDirectories.push(directoryPath);
+    pruneEmptyDirectory(path.dirname(directoryPath), runtimeRoot, removedDirectories);
   }
 
   return {
     start_date: weekRange.startDate,
     end_date: weekRange.endDate,
     deleted_record_ids: deletedRecordIds,
-    reset_state_path: resetStatePath,
-    removed_files: removedFiles
+    removed_files: removedFiles,
+    removed_directories: [...new Set(removedDirectories)]
   };
 }
 
