@@ -4,8 +4,6 @@ import { runMapper } from "./mapper.ts";
 import { loadConfig } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
-import { launchConfiguredBrowser } from "./browser-launch.ts";
-import { inspectConfiguredBrowser } from "./browser-inspect.ts";
 import { resetWeekCurrent, syncWeekCurrent } from "./week-sync.ts";
 import type { CliArgs } from "./types.ts";
 
@@ -44,14 +42,6 @@ function hasFlag(args: CliArgs, key: string): boolean {
 
 function printUsage(): void {
   console.log("Usage:");
-  console.log("  node ./src/cli.ts map --input <path> [--output-dir <dir>] [--config <path>] [--private-config <path>] [--redact]");
-  console.log("  node ./src/cli.ts fetch-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output <path>]");
-  console.log("  node ./src/cli.ts sync-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output-dir <dir>] [--redact]");
-  console.log("  node ./src/cli.ts prepare-upload [--input <path>] [--plan-path <path>] [--state-path <path>]");
-  console.log("  node ./src/cli.ts select-upload-batch [--plan-path <path>] [--state-path <path>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD] [--limit N]");
-  console.log("  node ./src/cli.ts update-upload-state --keys <id1,id2> --status <pending|uploaded|failed|skipped|blocked> [--state-path <path>] [--last-error <text>]");
-  console.log("  node ./src/cli.ts launch-browser [--url <url>] [--config <path>] [--private-config <path>]");
-  console.log("  node ./src/cli.ts inspect-browser [--url <url>] [--config <path>] [--private-config <path>]");
   console.log("  node ./src/cli.ts sync-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
   console.log("  node ./src/cli.ts reset-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
 }
@@ -165,30 +155,6 @@ if (command === "update-upload-state") {
     idempotencyKeys: keys,
     status: status as "pending" | "uploaded" | "failed" | "skipped" | "blocked",
     lastError: getStringArg(args, "last-error") ?? null
-  });
-
-  console.log(JSON.stringify(summary, null, 2));
-  process.exit(0);
-}
-
-if (command === "launch-browser") {
-  const summary = await launchConfiguredBrowser({
-    rootDir,
-    configPath,
-    privateConfigPath,
-    urlOverride: getStringArg(args, "url")
-  });
-
-  console.log(JSON.stringify(summary, null, 2));
-  process.exit(0);
-}
-
-if (command === "inspect-browser") {
-  const summary = await inspectConfiguredBrowser({
-    rootDir,
-    configPath,
-    privateConfigPath,
-    urlOverride: getStringArg(args, "url")
   });
 
   console.log(JSON.stringify(summary, null, 2));

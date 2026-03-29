@@ -1,92 +1,57 @@
 # Time Reporting Automation
 
-Deterministic pipeline for transforming Toggl Track exports into target-system-ready items, with a separate browser uploader for the final UI step.
+Deterministic pipeline for transforming Toggl Track entries into target-system-ready items and uploading the current week in one run.
 
-## Approach
+## What It Does
 
-- Keep mapping deterministic.
-- Keep UI automation isolated.
-- Aggregate short meetings before rounding.
-- Preserve manual review and final submit in the target system.
-- Allow project-specific parser plugins behind a shared contract.
+- Fetches entries from Toggl Track.
+- Maps them through project-specific rules from local config.
+- Aggregates matching entries into date-range report rows.
+- Rounds at the aggregated item level.
+- Uploads the current calendar week into the target UI.
 
-## Proposed Flow
-
-1. Export entries from Toggl Track in a fixed schema.
-2. Resolve a project parser from the parser factory.
-3. Run the parser to normalize and validate records.
-4. Aggregate meeting entries into target reporting buckets.
-5. Apply 30-minute rounding at the aggregated item level.
-6. Produce `report_items.json` and `exceptions.json`.
-7. Run the target-system uploader to enter items into the UI.
-8. Manually review and submit in the target system.
-
-## Project Layout
-
-- `docs/` - operating assumptions and rules
-- `schemas/` - canonical data contracts
-- `config/` - public and private JSON configuration
-- `fixtures/` - generic sample input
-- `src/` - runnable mapper CLI, parser factory, and uploader stub
-
-## Usage
+## Setup
 
 1. Copy `config/private.mapping.example.json` to `config/private.mapping.json`.
-2. Fill in local project aliases, internal codes, and tag mappings.
-3. Add your Toggl API token to the private config or `TOGGL_API_TOKEN`.
-4. Either fetch from Toggl directly or use an existing export.
+2. Fill in local project aliases, internal codes, browser profile settings, and Toggl API token.
+3. Make sure the configured Chrome profile can already open the target time-reporting page.
 
-Direct sync from Toggl API:
+## Daily Use
 
-```bash
-npm run sync:toggl -- --start-date 2026-03-01 --end-date 2026-03-31 --redact
-```
-
-Fetch only:
+Clean current-week artifacts and delete current-week records from the target UI:
 
 ```bash
-npm run fetch:toggl -- --start-date 2026-03-01 --end-date 2026-03-31
+npm run reset:week-current
 ```
 
-Map an existing local export:
+Run the full current-week flow:
 
 ```bash
-npm run map -- --input /absolute/path/to/export.json --redact
+npm run sync:week-current
 ```
 
-Outputs are written to `runtime/output/latest/`.
-
-For a generic dry run:
+Optional explicit range override:
 
 ```bash
-npm run map:sample
+npm run sync:week-current -- --start-date 2026-03-23 --end-date 2026-03-29
 ```
 
-## Current View
+## Runtime Files
 
-One useful source-system pattern looks like this:
+The tool writes transient artifacts under `runtime/`:
 
-- Ticket work:
-  - `Client: Client A`
-  - `Project: Project Alpha`
-  - `Task: TICKET-123`
-  - `Tags: category tag`
-- Meetings:
-  - better modeled as `Task: Meeting`
-  - meeting type goes to tags
-  - title stays in `Description`
+- `runtime/input/` for fetched Toggl data
+- `runtime/output/week-current/` for mapped report items and summaries
+- `runtime/state/` for upload state
 
-That keeps ticket IDs stable and lets meetings be aggregated intentionally instead of manually collapsed out of convenience.
+`npm run reset:week-current` removes the weekly artifacts again.
 
-## Parser Factory
+## Design Notes
 
-The mapper should not hardcode all project rules in one place.
-
-- Shared pipeline code handles validation, grouping, rounding, and output.
-- A parser factory picks a project-specific parser by Toggl project name.
-- Each parser can tweak classification, tag interpretation, and target-field mapping for one project.
-
-This gives you one core engine and multiple small project adapters instead of one giant mapper that becomes unmaintainable over time.
+- Mapping is deterministic.
+- Sensitive names and codes stay in `config/private.mapping.json`.
+- Project-specific behavior lives behind the parser factory.
+- Unmappable entries are left for manual correction instead of guessed.
 
 ## Privacy Boundary
 
@@ -96,5 +61,3 @@ This repository should stay generic.
 - No real internal project codes in committed config.
 - No real ticket prefixes in parser names or examples.
 - No production exports committed to the repository.
-
-Sensitive mappings should live in a local file such as `config/private.mapping.json`, which is loaded at runtime and excluded from version control.
