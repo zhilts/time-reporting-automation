@@ -6,3 +6,5 @@ runtime/
 .idea/
 .DS_Store
 .playwright-cli/
+node_modules/
+.playwright/

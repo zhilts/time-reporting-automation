@@ -8,8 +8,13 @@
     "fetch:toggl": "node ./src/cli.ts fetch-toggl",
     "sync:toggl": "node ./src/cli.ts sync-toggl",
     "launch:browser": "node ./src/cli.ts launch-browser",
+    "inspect:browser": "node ./src/cli.ts inspect-browser",
+    "repair:week-current": "node ./src/cli.ts repair-week-current",
     "prepare:upload": "node ./src/cli.ts prepare-upload",
     "map:sample": "node ./src/cli.ts map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/sample --redact",
     "check": "node ./src/cli.ts map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/check --redact"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
   }
 }

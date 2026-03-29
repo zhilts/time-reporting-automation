@@ -5,6 +5,8 @@ import { loadConfig } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
 import { launchConfiguredBrowser } from "./browser-launch.ts";
+import { inspectConfiguredBrowser } from "./browser-inspect.ts";
+import { repairWeekCurrent } from "./playwright-repair.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -49,6 +51,8 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts select-upload-batch [--plan-path <path>] [--state-path <path>] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD] [--limit N]");
   console.log("  node ./src/cli.ts update-upload-state --keys <id1,id2> --status <pending|uploaded|failed|skipped|blocked> [--state-path <path>] [--last-error <text>]");
   console.log("  node ./src/cli.ts launch-browser [--url <url>] [--config <path>] [--private-config <path>]");
+  console.log("  node ./src/cli.ts inspect-browser [--url <url>] [--config <path>] [--private-config <path>]");
+  console.log("  node ./src/cli.ts repair-week-current [--plan-path <path>] [--state-path <path>] [--output <path>] [--config <path>] [--private-config <path>]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -172,6 +176,32 @@ if (command === "launch-browser") {
     configPath,
     privateConfigPath,
     urlOverride: getStringArg(args, "url")
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "inspect-browser") {
+  const summary = await inspectConfiguredBrowser({
+    rootDir,
+    configPath,
+    privateConfigPath,
+    urlOverride: getStringArg(args, "url")
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
+
+if (command === "repair-week-current") {
+  const summary = await repairWeekCurrent({
+    rootDir,
+    configPath,
+    privateConfigPath,
+    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.week-current.json",
+    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.week-current.json",
+    outputPath: getStringArg(args, "output") ?? "./runtime/output/week-current/repair-summary.json"
   });
 
   console.log(JSON.stringify(summary, null, 2));

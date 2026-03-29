@@ -73,8 +73,14 @@ export async function launchConfiguredBrowser({
     args
   });
 
-  const page = context.pages()[0] ?? (await context.newPage());
-  await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+  const page = context.pages().find((candidate) => candidate.url().includes(targetUrl))
+    ?? context.pages().find((candidate) => candidate.url() !== "about:blank")
+    ?? context.pages()[0]
+    ?? (await context.newPage());
+
+  if (!page.url() || page.url() === "about:blank") {
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
+  }
 
   return {
     provider,
