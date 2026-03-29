@@ -191,7 +191,6 @@ function matchesExistingRecord(item: UploadPlanItem, existingRecords: ExistingRe
 }
 
 async function deleteRecord(page: Page, recordId: string): Promise<void> {
-  console.error(`[sync] deleting record ${recordId}`);
   const dialogHandler = async (dialog: Dialog) => {
     await dialog.accept();
   };
@@ -235,7 +234,6 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
     throw new Error(`Missing task label for ${item.idempotency_key}`);
   }
 
-  console.error(`[sync] adding ${item.start_date}-${item.finish_date} ${item.task_label} ${item.effort_hours} ${item.target_description}`);
   await openAddForm(page);
   await page.selectOption("#listBoxProjectUuid", { label: item.project_label });
   await waitForTaskOption(page, item.task_label);
@@ -277,8 +275,6 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
   if (dialogMessages.length > 0) {
     throw new Error(dialogMessages.join(" | "));
   }
-
-  console.error(`[sync] added ${item.idempotency_key}`);
 }
 
 export async function resetWeekCurrent({
@@ -314,7 +310,7 @@ export async function resetWeekCurrent({
     await waitForStablePage(page);
 
     const existingRecords = await collectExistingRecords(page);
-    console.error(`[reset] deleting current week records: ${existingRecords.length}`);
+    console.error(`[reset] deleting ${existingRecords.length} records`);
 
     for (const record of existingRecords) {
       await deleteRecord(page, record.recordId);
@@ -443,7 +439,8 @@ export async function syncWeekCurrent({
       }
     }
 
-    console.error(`[sync] reused existing items: ${reusedExistingKeys.length}`);
+    console.error(`[sync] week ${weekRange.startDate}..${weekRange.endDate}`);
+    console.error(`[sync] reuse ${reusedExistingKeys.length}, upload ${targetItems.length - reusedExistingKeys.length}`);
     for (const item of targetItems) {
       if (reusedExistingKeys.includes(item.idempotency_key)) {
         continue;
