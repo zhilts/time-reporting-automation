@@ -147,3 +147,46 @@ export type FetchSummary = {
 export type CliArgs = Record<string, string | boolean | string[] | undefined> & {
   _: string[];
 };
+
+export type UploadPlanItem = {
+  idempotency_key: string;
+  target_project_code: string;
+  target_description: string;
+  task_id: string | null;
+  duration_minutes_rounded: number;
+  work_date: string;
+  entry_type: ReportItem["entry_type"];
+};
+
+export type UploadPlan = {
+  generated_at: string;
+  source_report_path: string;
+  item_count: number;
+  items: UploadPlanItem[];
+};
+
+export type UploadStateItem = {
+  idempotency_key: string;
+  status: "pending" | "uploaded" | "failed" | "skipped";
+  last_error: string | null;
+  updated_at: string | null;
+};
+
+export type UploadState = {
+  updated_at: string;
+  items: UploadStateItem[];
+};
+
+export type PrepareUploadOptions = {
+  rootDir: string;
+  inputPath: string;
+  planPath?: string;
+  statePath?: string;
+};
+
+export type PrepareUploadSummary = {
+  source_report_path: string;
+  plan_path: string;
+  state_path: string;
+  item_count: number;
+};

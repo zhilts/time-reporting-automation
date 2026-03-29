@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { runMapper } from "./mapper.ts";
 import { loadConfig } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
+import { prepareUpload } from "./uploader.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -43,6 +44,7 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts map --input <path> [--output-dir <dir>] [--config <path>] [--private-config <path>] [--redact]");
   console.log("  node ./src/cli.ts fetch-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output <path>]");
   console.log("  node ./src/cli.ts sync-toggl [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--output-dir <dir>] [--redact]");
+  console.log("  node ./src/cli.ts prepare-upload [--input <path>] [--plan-path <path>] [--state-path <path>]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -107,6 +109,18 @@ if (command === "fetch-toggl" || command === "sync-toggl") {
   });
 
   console.log(JSON.stringify({ fetch: fetchSummary, map: mapSummary }, null, 2));
+  process.exit(0);
+}
+
+if (command === "prepare-upload") {
+  const summary = prepareUpload({
+    rootDir,
+    inputPath: getStringArg(args, "input") ?? "./runtime/output/latest/report_items.json",
+    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.json",
+    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.json"
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
   process.exit(0);
 }
 

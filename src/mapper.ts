@@ -165,7 +165,14 @@ function toGroupedKey(baseItem: BaseItem): string {
     ].join("|");
   }
 
-  return [baseItem.entry_type, baseItem.work_date, baseItem.source_ids[0] ?? ""].join("|");
+  return [
+    baseItem.entry_type,
+    baseItem.work_date,
+    baseItem.target_project_code,
+    baseItem.target_description,
+    baseItem.task_id ?? "",
+    baseItem.activity_code ?? ""
+  ].join("|");
 }
 
 function buildBaseItem(entry: TogglEntry, config: AppConfig, redactedLogging: boolean): BaseItem {

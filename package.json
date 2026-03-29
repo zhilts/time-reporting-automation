@@ -7,6 +7,7 @@
     "map": "node ./src/cli.ts map",
     "fetch:toggl": "node ./src/cli.ts fetch-toggl",
     "sync:toggl": "node ./src/cli.ts sync-toggl",
+    "prepare:upload": "node ./src/cli.ts prepare-upload",
     "map:sample": "node ./src/cli.ts map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/sample --redact",
     "check": "node ./src/cli.ts map --input ./fixtures/sample-toggl.json --output-dir ./runtime/output/check --redact"
   }
