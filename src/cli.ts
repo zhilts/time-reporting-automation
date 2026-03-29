@@ -6,7 +6,7 @@ import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { prepareUpload, selectUploadBatch, updateUploadState } from "./uploader.ts";
 import { launchConfiguredBrowser } from "./browser-launch.ts";
 import { inspectConfiguredBrowser } from "./browser-inspect.ts";
-import { repairWeekCurrent, resetWeekCurrent } from "./playwright-repair.ts";
+import { resetWeekCurrent, syncWeekCurrent } from "./week-sync.ts";
 import type { CliArgs } from "./types.ts";
 
 function parseArgs(argv: string[]): CliArgs {
@@ -52,8 +52,8 @@ function printUsage(): void {
   console.log("  node ./src/cli.ts update-upload-state --keys <id1,id2> --status <pending|uploaded|failed|skipped|blocked> [--state-path <path>] [--last-error <text>]");
   console.log("  node ./src/cli.ts launch-browser [--url <url>] [--config <path>] [--private-config <path>]");
   console.log("  node ./src/cli.ts inspect-browser [--url <url>] [--config <path>] [--private-config <path>]");
-  console.log("  node ./src/cli.ts repair-week-current [--plan-path <path>] [--state-path <path>] [--output <path>] [--config <path>] [--private-config <path>]");
-  console.log("  node ./src/cli.ts reset-week-current [--state-path <path>] [--plan-path <path>] [--config <path>] [--private-config <path>]");
+  console.log("  node ./src/cli.ts sync-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
+  console.log("  node ./src/cli.ts reset-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -195,14 +195,13 @@ if (command === "inspect-browser") {
   process.exit(0);
 }
 
-if (command === "repair-week-current") {
-  const summary = await repairWeekCurrent({
+if (command === "sync-week-current") {
+  const summary = await syncWeekCurrent({
     rootDir,
     configPath,
     privateConfigPath,
-    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.week-current.json",
-    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.week-current.json",
-    outputPath: getStringArg(args, "output") ?? "./runtime/output/week-current/repair-summary.json"
+    startDate: getStringArg(args, "start-date"),
+    endDate: getStringArg(args, "end-date")
   });
 
   console.log(JSON.stringify(summary, null, 2));
@@ -214,8 +213,8 @@ if (command === "reset-week-current") {
     rootDir,
     configPath,
     privateConfigPath,
-    statePath: getStringArg(args, "state-path") ?? "./runtime/state/upload-state.week-current.json",
-    planPath: getStringArg(args, "plan-path") ?? "./runtime/state/upload-plan.week-current.json"
+    startDate: getStringArg(args, "start-date"),
+    endDate: getStringArg(args, "end-date")
   });
 
   console.log(JSON.stringify(summary, null, 2));

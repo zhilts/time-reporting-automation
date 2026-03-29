@@ -1,17 +1,23 @@
-import type { BrowserContext, Dialog, Page } from "playwright";
-import path from "node:path";
-import { loadConfig, loadJsonFile } from "./config.ts";
 import fs from "node:fs";
+import path from "node:path";
+import type { BrowserContext, Dialog, Page } from "playwright";
+import { loadConfig, loadJsonFile } from "./config.ts";
+import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
+import { runMapper } from "./mapper.ts";
+import { prepareUpload } from "./uploader.ts";
 import { writeJson } from "./io.ts";
-import type { AppConfig, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
+import type { AppConfig, MapperSummary, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
 
-type RepairWeekOptions = {
-  rootDir: string;
-  configPath?: string;
-  privateConfigPath?: string;
-  planPath?: string;
-  statePath?: string;
-  outputPath?: string;
+const WEEK_FETCH_PATH = "./runtime/input/toggl.time_entries.json";
+const WEEK_OUTPUT_DIR = "./runtime/output/week-current";
+const WEEK_REPORT_PATH = "./runtime/output/week-current/report_items.json";
+const WEEK_PLAN_PATH = "./runtime/state/upload-plan.week-current.json";
+const WEEK_STATE_PATH = "./runtime/state/upload-state.week-current.json";
+const WEEK_SYNC_SUMMARY_PATH = "./runtime/output/week-current/sync-summary.json";
+
+type WeekRange = {
+  startDate: string;
+  endDate: string;
 };
 
 type ExistingRecord = {
@@ -19,17 +25,86 @@ type ExistingRecord = {
   text: string;
 };
 
-type RepairWeekSummary = {
+export type SyncWeekCurrentSummary = {
+  start_date: string;
+  end_date: string;
   deleted_record_ids: string[];
   uploaded_keys: string[];
   reused_existing_keys: string[];
   output_path: string;
+  fetch_entries: number;
+  mapped_items: number;
 };
 
-type ResetWeekSummary = {
+export type ResetWeekCurrentSummary = {
+  start_date: string;
+  end_date: string;
   deleted_record_ids: string[];
+  reset_state_path: string | null;
   removed_files: string[];
 };
+
+function getCurrentWeekRange(): WeekRange {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const localMidnight = new Date(year, month, day);
+  const jsDay = localMidnight.getDay();
+  const offsetToMonday = jsDay === 0 ? -6 : 1 - jsDay;
+
+  const monday = new Date(localMidnight);
+  monday.setDate(localMidnight.getDate() + offsetToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const toIso = (value: Date) => {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  return {
+    startDate: toIso(monday),
+    endDate: toIso(sunday)
+  };
+}
+
+function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): UploadState {
+  const uploadedSet = new Set(uploadedKeys);
+  const now = new Date().toISOString();
+
+  for (const item of state.items) {
+    if (uploadedSet.has(item.idempotency_key)) {
+      item.status = "uploaded";
+      item.last_error = null;
+      item.updated_at = now;
+      continue;
+    }
+
+    item.status = "pending";
+    item.last_error = null;
+    item.updated_at = null;
+  }
+
+  state.updated_at = now;
+  return state;
+}
+
+function resetUploadStateFile(state: UploadState): UploadState {
+  const now = new Date().toISOString();
+
+  for (const item of state.items) {
+    item.status = "pending";
+    item.last_error = null;
+    item.updated_at = null;
+  }
+
+  state.updated_at = now;
+  return state;
+}
 
 async function openConfiguredContext(config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
   const playwrightModule = await import("playwright");
@@ -84,49 +159,21 @@ async function collectExistingRecords(page: Page): Promise<ExistingRecord[]> {
   );
 }
 
-function buildExpectedRowText(item: UploadPlanItem): string {
-  const issuePart = item.task_id ? `${item.task_id} ` : "";
-  return `${item.project_label} ${item.task_label} ${item.effort_hours} ${issuePart}${item.target_description} ${item.start_date}`;
-}
-
 function matchesExistingRecord(item: UploadPlanItem, existingRecords: ExistingRecord[]): boolean {
   const fragments = [
     item.project_label,
     item.task_label ?? "",
     item.effort_hours,
     item.target_description,
-    item.start_date
+    item.start_date,
+    item.finish_date
   ].filter(Boolean);
 
   return existingRecords.some((record) => fragments.every((fragment) => record.text.includes(fragment)));
 }
 
-function isWrongAggregatedCommunication(record: ExistingRecord): boolean {
-  return record.text.includes("HDAA Communication")
-    && record.text.includes("Syncs/Dailies")
-    && (
-      record.text.includes("23.03.2026")
-      || record.text.includes("24.03.2026")
-      || record.text.includes("25.03.2026")
-      || record.text.includes("26.03.2026")
-    );
-}
-
-function resetUploadStateFile(state: UploadState): UploadState {
-  const now = new Date().toISOString();
-
-  for (const item of state.items) {
-    item.status = "pending";
-    item.last_error = null;
-    item.updated_at = null;
-  }
-
-  state.updated_at = now;
-  return state;
-}
-
 async function deleteRecord(page: Page, recordId: string): Promise<void> {
-  console.error(`[repair] deleting record ${recordId}`);
+  console.error(`[sync] deleting record ${recordId}`);
   const dialogHandler = async (dialog: Dialog) => {
     await dialog.accept();
   };
@@ -170,12 +217,11 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
     throw new Error(`Missing task label for ${item.idempotency_key}`);
   }
 
-  console.error(`[repair] adding ${item.work_date} ${item.task_label} ${item.effort_hours} ${item.target_description}`);
+  console.error(`[sync] adding ${item.start_date}-${item.finish_date} ${item.task_label} ${item.effort_hours} ${item.target_description}`);
   await openAddForm(page);
   await page.selectOption("#listBoxProjectUuid", { label: item.project_label });
   await waitForTaskOption(page, item.task_label);
   await page.selectOption("#listBoxIssueCode", { label: item.task_label });
-
   await page.fill("#effortRecordBugNumber", item.task_id ?? "");
   await page.fill("#effortRecordEffort", item.effort_hours);
   await page.fill("#effortRecordDescription", item.target_description);
@@ -214,113 +260,26 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
     throw new Error(dialogMessages.join(" | "));
   }
 
-  console.error(`[repair] added ${item.idempotency_key}`);
-}
-
-function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): UploadState {
-  const uploadedSet = new Set(uploadedKeys);
-  const now = new Date().toISOString();
-
-  for (const item of state.items) {
-    if (uploadedSet.has(item.idempotency_key)) {
-      item.status = "uploaded";
-      item.last_error = null;
-      item.updated_at = now;
-    }
-  }
-
-  state.updated_at = now;
-  return state;
-}
-
-export async function repairWeekCurrent({
-  rootDir,
-  configPath = "./config/mapping.json",
-  privateConfigPath = "./config/private.mapping.json",
-  planPath = "./runtime/state/upload-plan.week-current.json",
-  statePath = "./runtime/state/upload-state.week-current.json",
-  outputPath = "./runtime/output/week-current/repair-summary.json"
-}: RepairWeekOptions): Promise<RepairWeekSummary> {
-  const config = loadConfig(rootDir, configPath, privateConfigPath);
-  const browserLaunch = config.browser_launch;
-  const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
-  if (!browserLaunch?.enabled || !targetUrl) {
-    throw new Error("Browser launch is not configured.");
-  }
-
-  const plan = loadJsonFile<UploadPlan>(path.resolve(rootDir, planPath), true) as UploadPlan;
-  const state = loadJsonFile<UploadState>(path.resolve(rootDir, statePath), true) as UploadState;
-  const targetItems = plan.items.filter((item) => item.upload_ready);
-
-  const context = await openConfiguredContext(browserLaunch);
-  const deletedRecordIds: string[] = [];
-  const uploadedKeys: string[] = [];
-  const reusedExistingKeys: string[] = [];
-
-  try {
-    const page = await resolveTargetPage(context, targetUrl);
-    await page.bringToFront().catch(() => {});
-    await waitForStablePage(page);
-
-    const existingBeforeDelete = await collectExistingRecords(page);
-    const wrongRecords = existingBeforeDelete.filter(isWrongAggregatedCommunication);
-    console.error(`[repair] wrong aggregated records: ${wrongRecords.length}`);
-
-    for (const record of wrongRecords) {
-      await deleteRecord(page, record.recordId);
-      deletedRecordIds.push(record.recordId);
-    }
-
-    const existingAfterDelete = await collectExistingRecords(page);
-    for (const item of targetItems) {
-      if (matchesExistingRecord(item, existingAfterDelete)) {
-        reusedExistingKeys.push(item.idempotency_key);
-      }
-    }
-    console.error(`[repair] reused existing non-communication items: ${reusedExistingKeys.length}`);
-
-    for (const item of targetItems) {
-      if (reusedExistingKeys.includes(item.idempotency_key)) {
-        continue;
-      }
-
-      await addRecord(page, item);
-      uploadedKeys.push(item.idempotency_key);
-    }
-
-    const finalUploadedKeys = [...reusedExistingKeys, ...uploadedKeys];
-    const updatedState = updateUploadStateFile(state, finalUploadedKeys);
-    writeJson(path.resolve(rootDir, statePath), updatedState);
-
-    const summary: RepairWeekSummary = {
-      deleted_record_ids: deletedRecordIds,
-      uploaded_keys: uploadedKeys,
-      reused_existing_keys: reusedExistingKeys,
-      output_path: path.resolve(rootDir, outputPath)
-    };
-
-    writeJson(path.resolve(rootDir, outputPath), summary);
-    return summary;
-  } finally {
-    await context.close().catch(() => {});
-  }
+  console.error(`[sync] added ${item.idempotency_key}`);
 }
 
 export async function resetWeekCurrent({
   rootDir,
   configPath = "./config/mapping.json",
   privateConfigPath = "./config/private.mapping.json",
-  statePath = "./runtime/state/upload-state.week-current.json",
-  planPath = "./runtime/state/upload-plan.week-current.json",
-  repairSummaryPath = "./runtime/output/week-current/repair-summary.json"
+  startDate,
+  endDate
 }: {
   rootDir: string;
   configPath?: string;
   privateConfigPath?: string;
-  statePath?: string;
-  planPath?: string;
-  repairSummaryPath?: string;
-}): Promise<ResetWeekSummary> {
+  startDate?: string;
+  endDate?: string;
+}): Promise<ResetWeekCurrentSummary> {
+  const weekRange = {
+    startDate: startDate ?? getCurrentWeekRange().startDate,
+    endDate: endDate ?? getCurrentWeekRange().endDate
+  };
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const browserLaunch = config.browser_launch;
   const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
@@ -348,17 +307,18 @@ export async function resetWeekCurrent({
   }
 
   const removedFiles: string[] = [];
-  const absoluteStatePath = path.resolve(rootDir, statePath);
-  const absolutePlanPath = path.resolve(rootDir, planPath);
-  const absoluteRepairSummaryPath = path.resolve(rootDir, repairSummaryPath);
+  const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);
+  const absolutePlanPath = path.resolve(rootDir, WEEK_PLAN_PATH);
+  const absoluteSyncSummaryPath = path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH);
 
+  let resetStatePath: string | null = null;
   if (fs.existsSync(absoluteStatePath)) {
     const state = loadJsonFile<UploadState>(absoluteStatePath, true) as UploadState;
     writeJson(absoluteStatePath, resetUploadStateFile(state));
-    removedFiles.push(absoluteStatePath);
+    resetStatePath = absoluteStatePath;
   }
 
-  for (const filePath of [absolutePlanPath, absoluteRepairSummaryPath]) {
+  for (const filePath of [absolutePlanPath, absoluteSyncSummaryPath]) {
     if (!fs.existsSync(filePath)) {
       continue;
     }
@@ -368,7 +328,112 @@ export async function resetWeekCurrent({
   }
 
   return {
+    start_date: weekRange.startDate,
+    end_date: weekRange.endDate,
     deleted_record_ids: deletedRecordIds,
+    reset_state_path: resetStatePath,
     removed_files: removedFiles
   };
+}
+
+export async function syncWeekCurrent({
+  rootDir,
+  configPath = "./config/mapping.json",
+  privateConfigPath = "./config/private.mapping.json",
+  startDate,
+  endDate
+}: {
+  rootDir: string;
+  configPath?: string;
+  privateConfigPath?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<SyncWeekCurrentSummary> {
+  const weekRange = {
+    startDate: startDate ?? getCurrentWeekRange().startDate,
+    endDate: endDate ?? getCurrentWeekRange().endDate
+  };
+
+  const config = loadConfig(rootDir, configPath, privateConfigPath);
+  const apiToken = process.env.TOGGL_API_TOKEN ?? config.toggl_api?.api_token ?? null;
+  const fetchSummary = await fetchAndStoreTogglEntries({
+    rootDir,
+    apiToken,
+    startDate: weekRange.startDate,
+    endDate: weekRange.endDate,
+    outputPath: WEEK_FETCH_PATH
+  });
+
+  const mapSummary: MapperSummary = runMapper({
+    rootDir,
+    inputPath: WEEK_FETCH_PATH,
+    outputDir: WEEK_OUTPUT_DIR,
+    configPath,
+    privateConfigPath,
+    redact: true
+  });
+
+  prepareUpload({
+    rootDir,
+    inputPath: WEEK_REPORT_PATH,
+    configPath,
+    privateConfigPath,
+    planPath: WEEK_PLAN_PATH,
+    statePath: WEEK_STATE_PATH
+  });
+
+  const browserLaunch = config.browser_launch;
+  const targetUrl = browserLaunch?.target_url ?? config.upload?.target_page_url;
+  if (!browserLaunch?.enabled || !targetUrl) {
+    throw new Error("Browser launch is not configured.");
+  }
+
+  const plan = loadJsonFile<UploadPlan>(path.resolve(rootDir, WEEK_PLAN_PATH), true) as UploadPlan;
+  const state = loadJsonFile<UploadState>(path.resolve(rootDir, WEEK_STATE_PATH), true) as UploadState;
+  const targetItems = plan.items.filter((item) => item.upload_ready);
+  const context = await openConfiguredContext(browserLaunch);
+  const uploadedKeys: string[] = [];
+  const reusedExistingKeys: string[] = [];
+
+  try {
+    const page = await resolveTargetPage(context, targetUrl);
+    await page.bringToFront().catch(() => {});
+    await waitForStablePage(page);
+
+    const existingRecords = await collectExistingRecords(page);
+    for (const item of targetItems) {
+      if (matchesExistingRecord(item, existingRecords)) {
+        reusedExistingKeys.push(item.idempotency_key);
+      }
+    }
+
+    console.error(`[sync] reused existing items: ${reusedExistingKeys.length}`);
+    for (const item of targetItems) {
+      if (reusedExistingKeys.includes(item.idempotency_key)) {
+        continue;
+      }
+
+      await addRecord(page, item);
+      uploadedKeys.push(item.idempotency_key);
+    }
+  } finally {
+    await context.close().catch(() => {});
+  }
+
+  const finalUploadedKeys = [...reusedExistingKeys, ...uploadedKeys];
+  writeJson(path.resolve(rootDir, WEEK_STATE_PATH), updateUploadStateFile(state, finalUploadedKeys));
+
+  const summary: SyncWeekCurrentSummary = {
+    start_date: weekRange.startDate,
+    end_date: weekRange.endDate,
+    deleted_record_ids: [],
+    uploaded_keys: uploadedKeys,
+    reused_existing_keys: reusedExistingKeys,
+    output_path: path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH),
+    fetch_entries: fetchSummary.fetched_entries,
+    mapped_items: mapSummary.total_output_items
+  };
+
+  writeJson(path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH), summary);
+  return summary;
 }
