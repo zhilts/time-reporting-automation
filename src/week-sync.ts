@@ -116,6 +116,14 @@ function pruneEmptyDirectory(directoryPath: string, stopAtPath: string, removedD
   }
 }
 
+function removeFileIfExists(filePath: string): void {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  fs.unlinkSync(filePath);
+}
+
 async function openConfiguredContext(config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
   const playwrightModule = await import("playwright");
   if (!config.user_data_dir) {
@@ -463,5 +471,14 @@ export async function syncWeekCurrent({
   };
 
   writeJson(path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH), summary);
+  removeFileIfExists(path.resolve(rootDir, WEEK_FETCH_PATH));
+  removeFileIfExists(path.resolve(rootDir, WEEK_PLAN_PATH));
+  removeFileIfExists(path.resolve(rootDir, WEEK_REPORT_PATH));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "report_items.redacted.json")));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "exceptions.json")));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "run-summary.json")));
+  const removedDirectories: string[] = [];
+  const runtimeRoot = path.resolve(rootDir, "./runtime");
+  pruneEmptyDirectory(path.resolve(rootDir, "./runtime/input"), runtimeRoot, removedDirectories);
   return summary;
 }
