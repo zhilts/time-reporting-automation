@@ -6,7 +6,7 @@ import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { runMapper } from "./mapper.ts";
 import { prepareUpload } from "./uploader.ts";
 import { writeJson } from "./io.ts";
-import type { AppConfig, MapperSummary, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
+import type { AppConfig, MapperSummary, UploadAllocationSummary, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
 
 const WEEK_FETCH_PATH = "./runtime/input/toggl.time_entries.json";
 const WEEK_OUTPUT_DIR = "./runtime/output/week-current";
@@ -37,6 +37,7 @@ export type SyncWeekCurrentSummary = {
   output_path: string;
   fetch_entries: number;
   mapped_items: number;
+  allocation: UploadAllocationSummary;
 };
 
 export type ResetWeekCurrentSummary = {
@@ -405,7 +406,7 @@ export async function syncWeekCurrent({
     redact: true
   });
 
-  prepareUpload({
+  const prepareSummary = prepareUpload({
     rootDir,
     inputPath: WEEK_REPORT_PATH,
     configPath,
@@ -464,7 +465,8 @@ export async function syncWeekCurrent({
     reused_existing_keys: reusedExistingKeys,
     output_path: path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH),
     fetch_entries: fetchSummary.fetched_entries,
-    mapped_items: mapSummary.total_output_items
+    mapped_items: mapSummary.total_output_items,
+    allocation: prepareSummary.allocation
   };
 
   writeJson(path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH), summary);

@@ -8,6 +8,7 @@ import type {
   ReportItem,
   SelectUploadBatchOptions,
   SelectUploadBatchSummary,
+  UploadAllocationSummary,
   UpdateUploadStateOptions,
   UpdateUploadStateSummary,
   UploadPlan,
@@ -139,24 +140,57 @@ function isWorkingDay(workDate: string, config: AppConfig): boolean {
   return workingDays.has(normalizedDay);
 }
 
-function expandReportItemToDailyPlanItems(item: ReportItem, config: AppConfig): UploadPlanItem[] {
+type DailyUploadCandidate = {
+  item: ReportItem;
+  workDate: string;
+  roundedDayMinutes: number;
+};
+
+function expandReportItemToDailyCandidates(item: ReportItem, config: AppConfig): DailyUploadCandidate[] {
   const incrementMinutes = config.rounding.increment_minutes ?? 30;
   const roundingPolicy = config.rounding.policy ?? "nearest";
+
+  return Object.keys(item.daily_minutes_raw)
+    .sort()
+    .map((workDate) => ({
+      item,
+      workDate,
+      roundedDayMinutes: roundMinutes(item.daily_minutes_raw[workDate], incrementMinutes, roundingPolicy)
+    }))
+    .filter((candidate) => candidate.roundedDayMinutes > 0);
+}
+
+function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): UploadPlanItem[] {
   const standardLimit = config.upload?.standard_minutes_per_workday ?? 8 * 60;
+  const candidates = rawItems
+    .filter((item) => !item.needs_review)
+    .flatMap((item) => expandReportItemToDailyCandidates(item, config))
+    .sort((left, right) => {
+      if (left.workDate !== right.workDate) {
+        return left.workDate.localeCompare(right.workDate);
+      }
+
+      return left.item.idempotency_key.localeCompare(right.item.idempotency_key);
+    });
+
+  const remainingStandardByDay = new Map<string, number>();
   const planItems: UploadPlanItem[] = [];
 
-  for (const workDate of Object.keys(item.daily_minutes_raw).sort()) {
-    const roundedDayMinutes = roundMinutes(item.daily_minutes_raw[workDate], incrementMinutes, roundingPolicy);
-    const standardMinutes = isWorkingDay(workDate, config) ? Math.min(roundedDayMinutes, standardLimit) : 0;
-    const overtimeMinutes = roundedDayMinutes - standardMinutes;
+  for (const candidate of candidates) {
+    const standardCapacity = isWorkingDay(candidate.workDate, config) ? standardLimit : 0;
+    const remainingStandard = remainingStandardByDay.get(candidate.workDate) ?? standardCapacity;
+    const standardMinutes = Math.min(candidate.roundedDayMinutes, Math.max(0, remainingStandard));
+    const overtimeMinutes = candidate.roundedDayMinutes - standardMinutes;
 
     if (standardMinutes > 0) {
-      planItems.push(toUploadPlanItem(item, config, workDate, standardMinutes, "standard"));
+      planItems.push(toUploadPlanItem(candidate.item, config, candidate.workDate, standardMinutes, "standard"));
     }
 
     if (overtimeMinutes > 0) {
-      planItems.push(toUploadPlanItem(item, config, workDate, overtimeMinutes, "overtime"));
+      planItems.push(toUploadPlanItem(candidate.item, config, candidate.workDate, overtimeMinutes, "overtime"));
     }
+
+    remainingStandardByDay.set(candidate.workDate, Math.max(0, remainingStandard - standardMinutes));
   }
 
   return planItems;
@@ -179,6 +213,37 @@ function readUploadState(statePath: string): UploadState {
   return loadJsonFile<UploadState>(statePath, true) as UploadState;
 }
 
+function buildAllocationSummary(uploadItems: UploadPlanItem[]): UploadAllocationSummary {
+  const byDayMap = new Map<string, { standard_minutes: number; overtime_minutes: number }>();
+  let totalStandardMinutes = 0;
+  let totalOvertimeMinutes = 0;
+
+  for (const item of uploadItems) {
+    const day = byDayMap.get(item.work_date) ?? { standard_minutes: 0, overtime_minutes: 0 };
+    if (item.time_bucket === "standard") {
+      day.standard_minutes += item.duration_minutes_rounded;
+      totalStandardMinutes += item.duration_minutes_rounded;
+    } else {
+      day.overtime_minutes += item.duration_minutes_rounded;
+      totalOvertimeMinutes += item.duration_minutes_rounded;
+    }
+
+    byDayMap.set(item.work_date, day);
+  }
+
+  return {
+    total_standard_minutes: totalStandardMinutes,
+    total_overtime_minutes: totalOvertimeMinutes,
+    by_day: Array.from(byDayMap.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([workDate, totals]) => ({
+        work_date: workDate,
+        standard_minutes: totals.standard_minutes,
+        overtime_minutes: totals.overtime_minutes
+      }))
+  };
+}
+
 export function prepareUpload({
   rootDir,
   inputPath,
@@ -193,9 +258,7 @@ export function prepareUpload({
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const raw = readInputFile(resolvedInputPath) as ReportItem[];
 
-  const uploadItems = raw
-    .filter((item) => !item.needs_review)
-    .flatMap((item) => expandReportItemToDailyPlanItems(item, config))
+  const uploadItems = allocateDailyPlanItems(raw, config)
     .sort((left, right) => {
       if (left.work_date !== right.work_date) {
         return left.work_date.localeCompare(right.work_date);
@@ -232,7 +295,8 @@ export function prepareUpload({
     state_path: resolvedStatePath,
     item_count: uploadItems.length,
     ready_item_count: readyItemCount,
-    blocked_item_count: blockedItemCount
+    blocked_item_count: blockedItemCount,
+    allocation: buildAllocationSummary(uploadItems)
   };
 }
 

@@ -209,6 +209,16 @@ export type UploadPlan = {
   items: UploadPlanItem[];
 };
 
+export type UploadAllocationSummary = {
+  total_standard_minutes: number;
+  total_overtime_minutes: number;
+  by_day: Array<{
+    work_date: string;
+    standard_minutes: number;
+    overtime_minutes: number;
+  }>;
+};
+
 export type UploadStateItem = {
   idempotency_key: string;
   status: "pending" | "uploaded" | "failed" | "skipped" | "blocked";
@@ -237,6 +247,7 @@ export type PrepareUploadSummary = {
   item_count: number;
   ready_item_count: number;
   blocked_item_count: number;
+  allocation: UploadAllocationSummary;
 };
 
 export type SelectUploadBatchOptions = {
