@@ -66,8 +66,7 @@
     "enabled": true,
     "channel": "chrome",
     "headless": false,
-    "user_data_dir": "/Users/you/Library/Application Support/Google/Chrome",
-    "profile_directory": "Profile 1",
+    "user_data_dir": "./.browser-profile",
     "args": []
   }
 }

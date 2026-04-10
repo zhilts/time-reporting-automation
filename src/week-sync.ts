@@ -144,13 +144,19 @@ function removeFileIfExists(filePath: string): void {
   fs.unlinkSync(filePath);
 }
 
-async function openConfiguredContext(config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
+async function openConfiguredContext(rootDir: string, config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
   const playwrightModule = await import("playwright");
   if (!config.user_data_dir) {
     throw new Error("browser_launch.user_data_dir is required.");
   }
 
-  return playwrightModule.chromium.launchPersistentContext(config.user_data_dir, {
+  const userDataDir = path.isAbsolute(config.user_data_dir)
+    ? config.user_data_dir
+    : path.resolve(rootDir, config.user_data_dir);
+
+  fs.mkdirSync(userDataDir, { recursive: true });
+
+  return playwrightModule.chromium.launchPersistentContext(userDataDir, {
     channel: config.channel ?? "chrome",
     headless: config.headless ?? false,
     executablePath: config.executable_path ?? undefined,
@@ -327,7 +333,7 @@ export async function resetWeekCurrent({
     throw new Error("Browser launch is not configured.");
   }
 
-  const context = await openConfiguredContext(browserLaunch);
+  const context = await openConfiguredContext(rootDir, browserLaunch);
   const deletedRecordIds: string[] = [];
 
   try {
@@ -449,7 +455,7 @@ export async function syncWeekCurrent({
   const plan = loadJsonFile<UploadPlan>(path.resolve(rootDir, WEEK_PLAN_PATH), true) as UploadPlan;
   const state = loadJsonFile<UploadState>(path.resolve(rootDir, WEEK_STATE_PATH), true) as UploadState;
   const targetItems = plan.items.filter((item) => item.upload_ready);
-  const context = await openConfiguredContext(browserLaunch);
+  const context = await openConfiguredContext(rootDir, browserLaunch);
   const uploadedKeys: string[] = [];
   const reusedExistingKeys: string[] = [];
   const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);

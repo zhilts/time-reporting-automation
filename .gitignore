@@ -8,3 +8,4 @@ runtime/
 .playwright-cli/
 node_modules/
 .playwright/
+.browser-profile/
