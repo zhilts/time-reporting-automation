@@ -97,6 +97,25 @@ function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): Uplo
   return state;
 }
 
+function setUploadStateStatus(
+  state: UploadState,
+  idempotencyKey: string,
+  status: "pending" | "uploaded" | "failed" | "skipped" | "blocked",
+  lastError: string | null = null
+): UploadState {
+  const now = new Date().toISOString();
+  const targetItem = state.items.find((item) => item.idempotency_key === idempotencyKey);
+  if (!targetItem) {
+    return state;
+  }
+
+  targetItem.status = status;
+  targetItem.last_error = lastError;
+  targetItem.updated_at = now;
+  state.updated_at = now;
+  return state;
+}
+
 function pruneEmptyDirectory(directoryPath: string, stopAtPath: string, removedDirectories: string[]): void {
   let currentPath = directoryPath;
   const absoluteStopAtPath = path.resolve(stopAtPath);
@@ -240,7 +259,13 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
   await waitForTaskOption(page, item.task_label);
   await page.selectOption("#listBoxIssueCode", { label: item.task_label });
   await page.fill("#effortRecordBugNumber", item.task_id ?? "");
-  await page.fill("#effortRecordEffort", item.effort_hours);
+  if (item.time_bucket === "overtime") {
+    await page.fill("#effortRecordEffort", "0");
+    await page.fill("#effortRecordEffortOvertime", item.effort_hours);
+  } else {
+    await page.fill("#effortRecordEffort", item.effort_hours);
+    await page.fill("#effortRecordEffortOvertime", "0");
+  }
   await page.fill("#effortRecordDescription", item.target_description);
   await page.evaluate(({ started, finished }) => {
     const setDateValue = (selector: string, value: string) => {
@@ -427,6 +452,7 @@ export async function syncWeekCurrent({
   const context = await openConfiguredContext(browserLaunch);
   const uploadedKeys: string[] = [];
   const reusedExistingKeys: string[] = [];
+  const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);
 
   try {
     const page = await resolveTargetPage(context, targetUrl);
@@ -437,6 +463,7 @@ export async function syncWeekCurrent({
     for (const item of targetItems) {
       if (matchesExistingRecord(item, existingRecords)) {
         reusedExistingKeys.push(item.idempotency_key);
+        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "uploaded"));
       }
     }
 
@@ -447,15 +474,22 @@ export async function syncWeekCurrent({
         continue;
       }
 
-      await addRecord(page, item);
-      uploadedKeys.push(item.idempotency_key);
+      try {
+        await addRecord(page, item);
+        uploadedKeys.push(item.idempotency_key);
+        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "uploaded"));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "failed", message));
+        throw error;
+      }
     }
   } finally {
     await context.close().catch(() => {});
   }
 
   const finalUploadedKeys = [...reusedExistingKeys, ...uploadedKeys];
-  writeJson(path.resolve(rootDir, WEEK_STATE_PATH), updateUploadStateFile(state, finalUploadedKeys));
+  writeJson(absoluteStatePath, updateUploadStateFile(state, finalUploadedKeys));
 
   const summary: SyncWeekCurrentSummary = {
     start_date: weekRange.startDate,

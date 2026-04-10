@@ -40,6 +40,8 @@ function resolveMeetingDescription(entry: TogglEntry, context: ParserContext, bu
 export const ticketIdProjectParser: ProjectParser = {
   name: "ticket-id-project",
   parseEntry(entry: TogglEntry, context: ParserContext): ParsedEntry {
+    const description = entry.description.trim();
+
     if (isMeetingLike(entry, context)) {
       const bucketTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
       const bucket = bucketTag ? context.meetingBucketTags[bucketTag] : null;
@@ -76,7 +78,7 @@ export const ticketIdProjectParser: ProjectParser = {
       entryType: "other",
       taskId: null,
       activityCode: fallbackActivity,
-      targetDescription: fallbackActivity,
+      targetDescription: description || fallbackActivity,
       meetingBucket: null,
       needsReview: entry.tags.length === 0,
       reviewReasons: entry.tags.length === 0 ? ["Entry has no tag and did not match ticket or meeting conventions."] : []
