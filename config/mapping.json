@@ -52,6 +52,9 @@
   },
   "upload": {
     "target_page_url": "https://internal.example.local/time-reports",
+    "standard_minutes_per_workday": 480,
+    "working_days": [1, 2, 3, 4, 5],
+    "holidays": [],
     "project_option_labels": {
       "INTERNAL_PROJECT_CODE": "INTERNAL_PROJECT_CODE"
     },

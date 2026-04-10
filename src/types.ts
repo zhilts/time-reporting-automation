@@ -17,6 +17,7 @@ export type ReportItem = {
   work_date: string;
   start_work_date: string;
   finish_work_date: string;
+  daily_minutes_raw: Record<string, number>;
   task_id: string | null;
   duration_minutes_raw: number;
   duration_minutes_rounded: number;
@@ -88,6 +89,9 @@ export type AppConfig = {
   privacy?: Record<string, unknown>;
   upload?: {
     target_page_url?: string;
+    standard_minutes_per_workday?: number;
+    working_days?: number[];
+    holidays?: string[];
     project_option_labels?: Record<string, string>;
     default_task_by_project?: Record<string, string>;
     task_by_activity_code?: Record<string, Record<string, string>>;
@@ -180,6 +184,8 @@ export type CliArgs = Record<string, string | boolean | string[] | undefined> & 
 
 export type UploadPlanItem = {
   idempotency_key: string;
+  source_report_idempotency_key: string;
+  time_bucket: "standard" | "overtime";
   target_project_code: string;
   project_label: string;
   target_description: string;

@@ -215,6 +215,9 @@ function buildBaseItem(entry: TogglEntry, config: AppConfig, redactedLogging: bo
     work_date: toWorkDate(entry.start),
     start_work_date: toWorkDate(entry.start),
     finish_work_date: toWorkDate(entry.start),
+    daily_minutes_raw: {
+      [toWorkDate(entry.start)]: entry.duration_minutes
+    },
     task_id: parsed.taskId,
     duration_minutes_raw: entry.duration_minutes,
     duration_minutes_rounded: 0,
@@ -260,6 +263,7 @@ function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportIte
       aggregated.push({
         ...item,
         source_ids: [...item.source_ids],
+        daily_minutes_raw: { ...item.daily_minutes_raw },
         review_reasons: [...item.review_reasons]
       });
       continue;
@@ -268,6 +272,9 @@ function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportIte
     previous.duration_minutes_raw += item.duration_minutes_raw;
     previous.finish_work_date = item.finish_work_date;
     previous.source_ids.push(...item.source_ids);
+    for (const [workDate, minutes] of Object.entries(item.daily_minutes_raw)) {
+      previous.daily_minutes_raw[workDate] = (previous.daily_minutes_raw[workDate] ?? 0) + minutes;
+    }
     previous.needs_review = previous.needs_review || item.needs_review;
     previous.review_reasons = Array.from(new Set([...previous.review_reasons, ...item.review_reasons]));
   }
@@ -288,6 +295,9 @@ function aggregateBaseItems(baseItems: BaseItem[], config: AppConfig): ReportIte
       ...item,
       work_date: item.start_work_date,
       source_ids: Array.from(new Set(item.source_ids)).sort(),
+      daily_minutes_raw: Object.fromEntries(
+        Object.entries(item.daily_minutes_raw).sort(([left], [right]) => left.localeCompare(right))
+      ),
       duration_minutes_rounded: roundMinutes(
         item.duration_minutes_raw,
         config.rounding.increment_minutes ?? 30,
@@ -325,6 +335,7 @@ function buildExceptions(aggregatedItems: ReportItem[], redactedLogging: boolean
       work_date: item.work_date,
       start_work_date: item.start_work_date,
       finish_work_date: item.finish_work_date,
+      daily_minutes_raw: item.daily_minutes_raw,
       target_project_code: item.target_project_code,
       task_id: redactedLogging && item.task_id ? `...${item.task_id.slice(-4)}` : item.task_id,
       resolution_action: fixInTrackerOrManualEntry ? "fix_in_tracker_or_manual_entry" : "review_mapping",
