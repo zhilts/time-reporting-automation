@@ -142,7 +142,7 @@ function isWorkingDay(workDate: string, config: AppConfig): boolean {
 
 type DailyUploadCandidate = {
   item: ReportItem;
-  workDate: string;
+  sourceWorkDate: string;
   roundedDayMinutes: number;
 };
 
@@ -154,10 +154,18 @@ function expandReportItemToDailyCandidates(item: ReportItem, config: AppConfig):
     .sort()
     .map((workDate) => ({
       item,
-      workDate,
+      sourceWorkDate: workDate,
       roundedDayMinutes: roundMinutes(item.daily_minutes_raw[workDate], incrementMinutes, roundingPolicy)
     }))
     .filter((candidate) => candidate.roundedDayMinutes > 0);
+}
+
+function getWeekKey(workDate: string): string {
+  const [year, month, day] = workDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const utcDay = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() - utcDay + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): UploadPlanItem[] {
@@ -166,31 +174,64 @@ function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): Uplo
     .filter((item) => !item.needs_review)
     .flatMap((item) => expandReportItemToDailyCandidates(item, config))
     .sort((left, right) => {
-      if (left.workDate !== right.workDate) {
-        return left.workDate.localeCompare(right.workDate);
+      if (left.sourceWorkDate !== right.sourceWorkDate) {
+        return left.sourceWorkDate.localeCompare(right.sourceWorkDate);
       }
 
       return left.item.idempotency_key.localeCompare(right.item.idempotency_key);
     });
 
+  const weeklyWorkingDays = new Map<string, string[]>();
+  for (const candidate of candidates) {
+    if (!isWorkingDay(candidate.sourceWorkDate, config)) {
+      continue;
+    }
+
+    const weekKey = getWeekKey(candidate.sourceWorkDate);
+    const days = weeklyWorkingDays.get(weekKey) ?? [];
+    if (!days.includes(candidate.sourceWorkDate)) {
+      days.push(candidate.sourceWorkDate);
+      days.sort();
+    }
+    weeklyWorkingDays.set(weekKey, days);
+  }
+
   const remainingStandardByDay = new Map<string, number>();
   const planItems: UploadPlanItem[] = [];
+  let segmentIndex = 0;
 
   for (const candidate of candidates) {
-    const standardCapacity = isWorkingDay(candidate.workDate, config) ? standardLimit : 0;
-    const remainingStandard = remainingStandardByDay.get(candidate.workDate) ?? standardCapacity;
-    const standardMinutes = Math.min(candidate.roundedDayMinutes, Math.max(0, remainingStandard));
-    const overtimeMinutes = candidate.roundedDayMinutes - standardMinutes;
+    let remainingMinutes = candidate.roundedDayMinutes;
+    const weekKey = getWeekKey(candidate.sourceWorkDate);
+    const targetWorkingDays = weeklyWorkingDays.get(weekKey) ?? [];
 
-    if (standardMinutes > 0) {
-      planItems.push(toUploadPlanItem(candidate.item, config, candidate.workDate, standardMinutes, "standard"));
+    for (const targetWorkDate of targetWorkingDays) {
+      if (remainingMinutes <= 0) {
+        break;
+      }
+
+      const currentRemaining = remainingStandardByDay.has(targetWorkDate)
+        ? (remainingStandardByDay.get(targetWorkDate) ?? 0)
+        : standardLimit;
+      const standardMinutes = Math.min(remainingMinutes, Math.max(0, currentRemaining));
+      if (standardMinutes <= 0) {
+        continue;
+      }
+
+      segmentIndex += 1;
+      const standardItem = toUploadPlanItem(candidate.item, config, targetWorkDate, standardMinutes, "standard");
+      standardItem.idempotency_key = `${candidate.item.idempotency_key}:${candidate.sourceWorkDate}:${targetWorkDate}:standard:${standardMinutes}:${segmentIndex}`;
+      planItems.push(standardItem);
+      remainingStandardByDay.set(targetWorkDate, currentRemaining - standardMinutes);
+      remainingMinutes -= standardMinutes;
     }
 
-    if (overtimeMinutes > 0) {
-      planItems.push(toUploadPlanItem(candidate.item, config, candidate.workDate, overtimeMinutes, "overtime"));
+    if (remainingMinutes > 0) {
+      segmentIndex += 1;
+      const overtimeItem = toUploadPlanItem(candidate.item, config, candidate.sourceWorkDate, remainingMinutes, "overtime");
+      overtimeItem.idempotency_key = `${candidate.item.idempotency_key}:${candidate.sourceWorkDate}:${candidate.sourceWorkDate}:overtime:${remainingMinutes}:${segmentIndex}`;
+      planItems.push(overtimeItem);
     }
-
-    remainingStandardByDay.set(candidate.workDate, Math.max(0, remainingStandard - standardMinutes));
   }
 
   return planItems;
