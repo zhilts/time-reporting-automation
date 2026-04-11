@@ -249,34 +249,3 @@ export type PrepareUploadSummary = {
   blocked_item_count: number;
   allocation: UploadAllocationSummary;
 };
-
-export type SelectUploadBatchOptions = {
-  rootDir: string;
-  planPath?: string;
-  statePath?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  limit?: number;
-};
-
-export type SelectUploadBatchSummary = {
-  plan_path: string;
-  state_path: string;
-  selected_count: number;
-  items: UploadPlanItem[];
-};
-
-export type UpdateUploadStateOptions = {
-  rootDir: string;
-  statePath?: string;
-  idempotencyKeys: string[];
-  status: UploadStateItem["status"];
-  lastError?: string | null;
-};
-
-export type UpdateUploadStateSummary = {
-  state_path: string;
-  updated_count: number;
-  status: UploadStateItem["status"];
-  idempotency_keys: string[];
-};

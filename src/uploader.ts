@@ -1,16 +1,12 @@
 import path from "node:path";
-import { loadConfig, loadJsonFile } from "./config.ts";
+import { loadConfig } from "./config.ts";
 import { ensureDirectory, readInputFile, writeJson } from "./io.ts";
 import type {
   AppConfig,
   PrepareUploadOptions,
   PrepareUploadSummary,
   ReportItem,
-  SelectUploadBatchOptions,
-  SelectUploadBatchSummary,
   UploadAllocationSummary,
-  UpdateUploadStateOptions,
-  UpdateUploadStateSummary,
   UploadPlan,
   UploadPlanItem,
   UploadState,
@@ -246,14 +242,6 @@ function toUploadStateItem(item: UploadPlanItem): UploadStateItem {
   };
 }
 
-function readUploadPlan(planPath: string): UploadPlan {
-  return loadJsonFile<UploadPlan>(planPath, true) as UploadPlan;
-}
-
-function readUploadState(statePath: string): UploadState {
-  return loadJsonFile<UploadState>(statePath, true) as UploadState;
-}
-
 function buildAllocationSummary(uploadItems: UploadPlanItem[]): UploadAllocationSummary {
   const byDayMap = new Map<string, { standard_minutes: number; overtime_minutes: number }>();
   let totalStandardMinutes = 0;
@@ -338,81 +326,5 @@ export function prepareUpload({
     ready_item_count: readyItemCount,
     blocked_item_count: blockedItemCount,
     allocation: buildAllocationSummary(uploadItems)
-  };
-}
-
-export function selectUploadBatch({
-  rootDir,
-  planPath = "./runtime/state/upload-plan.json",
-  statePath = "./runtime/state/upload-state.json",
-  dateFrom,
-  dateTo,
-  limit
-}: SelectUploadBatchOptions): SelectUploadBatchSummary {
-  const resolvedPlanPath = path.resolve(rootDir, planPath);
-  const resolvedStatePath = path.resolve(rootDir, statePath);
-  const plan = readUploadPlan(resolvedPlanPath);
-  const state = readUploadState(resolvedStatePath);
-  const stateByKey = new Map(state.items.map((item) => [item.idempotency_key, item]));
-
-  const items = plan.items
-    .filter((item) => {
-      const stateItem = stateByKey.get(item.idempotency_key);
-      if (!stateItem || stateItem.status !== "pending") {
-        return false;
-      }
-
-      if (dateFrom && item.work_date < dateFrom) {
-        return false;
-      }
-
-      if (dateTo && item.work_date > dateTo) {
-        return false;
-      }
-
-      return true;
-    })
-    .slice(0, limit && limit > 0 ? limit : undefined);
-
-  return {
-    plan_path: resolvedPlanPath,
-    state_path: resolvedStatePath,
-    selected_count: items.length,
-    items
-  };
-}
-
-export function updateUploadState({
-  rootDir,
-  statePath = "./runtime/state/upload-state.json",
-  idempotencyKeys,
-  status,
-  lastError = null
-}: UpdateUploadStateOptions): UpdateUploadStateSummary {
-  const resolvedStatePath = path.resolve(rootDir, statePath);
-  const state = readUploadState(resolvedStatePath);
-  const keySet = new Set(idempotencyKeys);
-  const now = new Date().toISOString();
-  let updatedCount = 0;
-
-  for (const item of state.items) {
-    if (!keySet.has(item.idempotency_key)) {
-      continue;
-    }
-
-    item.status = status;
-    item.last_error = lastError;
-    item.updated_at = now;
-    updatedCount += 1;
-  }
-
-  state.updated_at = now;
-  writeJson(resolvedStatePath, state);
-
-  return {
-    state_path: resolvedStatePath,
-    updated_count: updatedCount,
-    status,
-    idempotency_keys: idempotencyKeys
   };
 }
