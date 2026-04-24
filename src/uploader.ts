@@ -13,6 +13,14 @@ import type {
   UploadStateItem
 } from "./types.ts";
 
+function hashValue(value: string): string {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
 function roundMinutes(durationMinutes: number, incrementMinutes: number, policy: "nearest" | "ceil" | "floor"): number {
   if (incrementMinutes <= 0) {
     return durationMinutes;
@@ -164,6 +172,67 @@ function getWeekKey(workDate: string): string {
   return date.toISOString().slice(0, 10);
 }
 
+function getFinalUploadMergeKey(item: UploadPlanItem): string {
+  return [
+    item.work_date,
+    item.time_bucket,
+    item.target_project_code,
+    item.project_label,
+    item.task_label ?? "",
+    item.task_id ?? "",
+    item.target_description,
+    item.activity_code ?? "",
+    item.entry_type
+  ].join("|");
+}
+
+function squashAllocatedPlanItems(planItems: UploadPlanItem[]): UploadPlanItem[] {
+  const merged = new Map<string, UploadPlanItem>();
+
+  for (const item of planItems) {
+    const mergeKey = getFinalUploadMergeKey(item);
+    const existing = merged.get(mergeKey);
+    if (!existing) {
+      merged.set(mergeKey, { ...item });
+      continue;
+    }
+
+    existing.duration_minutes_rounded += item.duration_minutes_rounded;
+    existing.effort_hours = formatHours(existing.duration_minutes_rounded);
+  }
+
+  return Array.from(merged.values())
+    .sort((left, right) => {
+      if (left.work_date !== right.work_date) {
+        return left.work_date.localeCompare(right.work_date);
+      }
+      if (left.time_bucket !== right.time_bucket) {
+        return left.time_bucket.localeCompare(right.time_bucket);
+      }
+      return left.idempotency_key.localeCompare(right.idempotency_key);
+    })
+    .map((item) => ({
+      ...item,
+      idempotency_key: hashUploadPlanIdentity(item)
+    }));
+}
+
+function hashUploadPlanIdentity(item: UploadPlanItem): string {
+  return hashValue([
+    item.source_report_idempotency_key,
+    item.work_date,
+    item.time_bucket,
+    item.target_project_code,
+    item.project_label,
+    item.task_label ?? "",
+    item.task_id ?? "",
+    item.target_description,
+    item.activity_code ?? "",
+    item.entry_type,
+    item.duration_minutes_rounded
+  ].join("|"));
+}
+
 function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): UploadPlanItem[] {
   const standardLimit = config.upload?.standard_minutes_per_workday ?? 8 * 60;
   const candidates = rawItems
@@ -230,7 +299,7 @@ function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): Uplo
     }
   }
 
-  return planItems;
+  return squashAllocatedPlanItems(planItems);
 }
 
 function toUploadStateItem(item: UploadPlanItem): UploadStateItem {
