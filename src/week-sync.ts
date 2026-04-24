@@ -250,8 +250,9 @@ async function waitForTaskOption(page: Page, label: string): Promise<void> {
 
 async function openAddForm(page: Page): Promise<void> {
   const addLink = page.locator("[title='Add new record']").first();
-  await addLink.click();
-  await page.waitForSelector("#listBoxProjectUuid", { timeout: 30_000 });
+  await addLink.click({ noWaitAfter: true, timeout: 60_000 });
+  await page.waitForLoadState("domcontentloaded", { timeout: 60_000 }).catch(() => {});
+  await page.waitForSelector("#listBoxProjectUuid", { timeout: 60_000 });
   await page.waitForTimeout(1_500);
 }
 
