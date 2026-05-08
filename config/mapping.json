@@ -1,6 +1,6 @@
 {
   "toggl": {
-    "required_fields": ["id", "start", "duration_minutes", "description"],
+    "required_fields": ["id", "start", "duration_minutes"],
     "field_aliases": {
       "id": ["id", "ID"],
       "start": ["start", "Start", "Start date"],

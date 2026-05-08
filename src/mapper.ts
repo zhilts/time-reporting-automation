@@ -63,6 +63,26 @@ function toRecord(value: unknown): PrimitiveRecord {
   return value as PrimitiveRecord;
 }
 
+function validateNormalizedEntry(entry: TogglEntry, config: AppConfig): string[] {
+  const problems: string[] = [];
+
+  const missingFields = config.toggl.required_fields.filter((fieldName) => {
+    const fieldValue = entry[fieldName as keyof TogglEntry];
+    return fieldValue === undefined || fieldValue === null || fieldValue === "" || (Array.isArray(fieldValue) && fieldValue.length === 0);
+  });
+
+  if (missingFields.length > 0) {
+    problems.push(`missing required fields: ${missingFields.join(", ")}`);
+  }
+
+  const hasProjectContext = Boolean(entry.client || entry.project || entry.task || entry.tags.length > 0 || entry.description);
+  if (entry.duration_minutes <= 1 && !hasProjectContext) {
+    problems.push("entry looks like an empty accidental timer (1 minute with no client, project, task, tags, or description)");
+  }
+
+  return problems;
+}
+
 function normalizeRecords(rawEntries: unknown[], config: AppConfig): TogglEntry[] {
   const aliases = config.toggl.field_aliases;
   const separator = config.toggl.tags_separator ?? ",";
@@ -80,13 +100,15 @@ function normalizeRecords(rawEntries: unknown[], config: AppConfig): TogglEntry[
       description: String(pickField(record, aliases.description) ?? "")
     };
 
-    const missingFields = config.toggl.required_fields.filter((fieldName) => {
-      const fieldValue = entry[fieldName as keyof TogglEntry];
-      return fieldValue === undefined || fieldValue === null || fieldValue === "" || (Array.isArray(fieldValue) && fieldValue.length === 0);
-    });
-
-    if (missingFields.length > 0) {
-      throw new Error(`Entry ${entry.id} is missing required fields: ${missingFields.join(", ")}`);
+    const validationProblems = validateNormalizedEntry(entry, config);
+    if (validationProblems.length > 0) {
+      throw new Error(
+        `Entry ${entry.id} is invalid: ${validationProblems.join("; ")}. `
+        + `start=${entry.start || "<empty>"} duration_minutes=${entry.duration_minutes} `
+        + `project=${entry.project || "<empty>"} task=${entry.task || "<empty>"} `
+        + `tags=${entry.tags.length ? entry.tags.join(",") : "<empty>"} `
+        + `description=${entry.description || "<empty>"}`
+      );
     }
 
     return entry;
