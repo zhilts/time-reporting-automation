@@ -87,10 +87,6 @@ function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): Uplo
       item.updated_at = now;
       continue;
     }
-
-    item.status = "pending";
-    item.last_error = null;
-    item.updated_at = null;
   }
 
   state.updated_at = now;
