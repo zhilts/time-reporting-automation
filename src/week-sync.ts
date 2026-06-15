@@ -152,14 +152,26 @@ async function openConfiguredContext(rootDir: string, config: NonNullable<AppCon
 
   fs.mkdirSync(userDataDir, { recursive: true });
 
-  return playwrightModule.chromium.launchPersistentContext(userDataDir, {
-    channel: config.channel ?? "chrome",
-    headless: config.headless ?? false,
-    executablePath: config.executable_path ?? undefined,
-    args: config.profile_directory
-      ? [`--profile-directory=${config.profile_directory}`, ...(config.args ?? [])]
-      : (config.args ?? [])
-  });
+  try {
+    return await playwrightModule.chromium.launchPersistentContext(userDataDir, {
+      channel: config.channel ?? "chrome",
+      headless: config.headless ?? false,
+      executablePath: config.executable_path ?? undefined,
+      args: config.profile_directory
+        ? [`--profile-directory=${config.profile_directory}`, ...(config.args ?? [])]
+        : (config.args ?? [])
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("ProcessSingleton") || message.includes("SingletonLock")) {
+      throw new Error(
+        `Automation browser profile is locked: ${userDataDir}. ` +
+        "Close the existing automation Chrome window or remove the stale lock, then rerun sync:week-current."
+      );
+    }
+
+    throw error;
+  }
 }
 
 async function resolveTargetPage(context: BrowserContext, targetUrl: string): Promise<Page> {
