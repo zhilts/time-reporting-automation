@@ -1,13 +1,34 @@
 import type { ParsedEntry, ParserContext, ProjectParser, TogglEntry } from "../types.ts";
+import { parseTaskIdPrefix } from "./task-id.ts";
+
+function hasInterviewTag(tags: string[]): boolean {
+  return tags.some((tag) => tag.toLowerCase() === "interview");
+}
 
 export const descriptionPassthroughProjectParser: ProjectParser = {
   name: "description-passthrough-project",
   parseEntry(entry: TogglEntry, _context: ParserContext): ParsedEntry {
-    const description = entry.description.trim();
+    const { taskId, strippedDescription } = parseTaskIdPrefix(entry.description);
+    const description = strippedDescription || entry.description.trim();
+    const interview = hasInterviewTag(entry.tags);
+
+    if (interview) {
+      return {
+        entryType: "other",
+        taskId,
+        activityCode: "Interview",
+        targetDescription: description || "Interview",
+        meetingBucket: null,
+        needsReview: description.length === 0,
+        reviewReasons: [
+          ...(description.length === 0 ? ["Interview entry description is empty."] : [])
+        ]
+      };
+    }
 
     return {
       entryType: "other",
-      taskId: null,
+      taskId,
       activityCode: null,
       targetDescription: description || "Unlabeled",
       meetingBucket: null,

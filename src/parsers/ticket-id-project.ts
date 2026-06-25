@@ -1,7 +1,12 @@
 import type { ParsedEntry, ParserContext, ProjectParser, TogglEntry } from "../types.ts";
+import { parseTaskIdPrefix } from "./task-id.ts";
 
 function extractTicketId(entry: TogglEntry, context: ParserContext): string | null {
-  const candidates = context.ticketIdSources.map((source) => entry[source] ?? "").map((value) => value.trim()).filter(Boolean);
+  const prefixedTaskId = parseTaskIdPrefix(entry.description).taskId;
+  const candidates = [
+    ...(prefixedTaskId ? [prefixedTaskId] : []),
+    ...context.ticketIdSources.map((source) => entry[source] ?? "").map((value) => value.trim()).filter(Boolean)
+  ];
   for (const candidate of candidates) {
     if (context.ticketIdRegexes.some((regex) => regex.test(candidate))) {
       return candidate;
@@ -40,7 +45,8 @@ function resolveMeetingDescription(entry: TogglEntry, context: ParserContext, bu
 export const ticketIdProjectParser: ProjectParser = {
   name: "ticket-id-project",
   parseEntry(entry: TogglEntry, context: ParserContext): ParsedEntry {
-    const description = entry.description.trim();
+    const { strippedDescription } = parseTaskIdPrefix(entry.description);
+    const description = strippedDescription || entry.description.trim();
 
     if (isMeetingLike(entry, context)) {
       const bucketTag = entry.tags.find((tag) => context.meetingBucketTags[tag]);
@@ -66,7 +72,7 @@ export const ticketIdProjectParser: ProjectParser = {
         entryType: "ticket_work",
         taskId: ticketId,
         activityCode,
-        targetDescription: activityCode,
+        targetDescription: description && description !== ticketId ? description : activityCode,
         meetingBucket: null,
         needsReview: !activityTag,
         reviewReasons: activityTag ? [] : ["Ticket entry is missing a recognized activity tag."]

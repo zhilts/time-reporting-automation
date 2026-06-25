@@ -4,6 +4,7 @@ export type TogglEntry = {
   id: string;
   start: string;
   duration_minutes: number;
+  is_running?: boolean;
   client: string;
   project: string;
   task: string;

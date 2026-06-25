@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkEntries } from "./check-entries.ts";
 import { resetWeekCurrent, syncWeekCurrent } from "./week-sync.ts";
 import type { CliArgs } from "./types.ts";
 
@@ -34,6 +35,7 @@ function getStringArg(args: CliArgs, key: string): string | undefined {
 
 function printUsage(): void {
   console.log("Usage:");
+  console.log("  node ./src/cli.ts check-entries [--date YYYY-MM-DD]");
   console.log("  node ./src/cli.ts sync-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
   console.log("  node ./src/cli.ts reset-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
 }
@@ -45,6 +47,18 @@ const args = parseArgs(process.argv.slice(2));
 const command = args._[0];
 const configPath = getStringArg(args, "config") ?? "./config/mapping.json";
 const privateConfigPath = getStringArg(args, "private-config") ?? "./config/private.mapping.json";
+
+if (command === "check-entries") {
+  const summary = await checkEntries({
+    rootDir,
+    configPath,
+    privateConfigPath,
+    date: getStringArg(args, "date")
+  });
+
+  console.log(JSON.stringify(summary, null, 2));
+  process.exit(0);
+}
 
 if (command === "sync-week-current") {
   const summary = await syncWeekCurrent({

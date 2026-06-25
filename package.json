@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:entries": "node ./src/cli.ts check-entries",
     "sync:week-current": "node ./src/cli.ts sync-week-current",
     "reset:week-current": "node ./src/cli.ts reset-week-current"
   },

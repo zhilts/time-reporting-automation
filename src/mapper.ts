@@ -66,6 +66,11 @@ function toRecord(value: unknown): PrimitiveRecord {
 function validateNormalizedEntry(entry: TogglEntry, config: AppConfig): string[] {
   const problems: string[] = [];
 
+  if (entry.is_running) {
+    problems.push("entry is still running; stop the timer in Toggl before syncing");
+    return problems;
+  }
+
   const missingFields = config.toggl.required_fields.filter((fieldName) => {
     const fieldValue = entry[fieldName as keyof TogglEntry];
     return fieldValue === undefined || fieldValue === null || fieldValue === "" || (Array.isArray(fieldValue) && fieldValue.length === 0);

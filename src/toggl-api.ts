@@ -35,11 +35,17 @@ function toMinutesFromDuration(entry: PrimitiveRecord): number {
   return Math.max(1, Math.round(durationSeconds / 60));
 }
 
+function isRunningEntry(entry: PrimitiveRecord): boolean {
+  const durationSeconds = Number(entry.duration ?? 0);
+  return Number.isFinite(durationSeconds) && durationSeconds < 0;
+}
+
 function normalizeTimeEntry(entry: PrimitiveRecord): TogglEntry {
   return {
     id: String(entry.id),
     start: String(entry.start ?? ""),
     duration_minutes: toMinutesFromDuration(entry),
+    is_running: isRunningEntry(entry),
     client: String(entry.client_name ?? ""),
     project: String(entry.project_name ?? ""),
     task: String(entry.task_name ?? ""),
