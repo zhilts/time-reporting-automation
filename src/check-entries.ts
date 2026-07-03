@@ -5,6 +5,12 @@ import { fetchTogglTimeEntries } from "./toggl-api.ts";
 import { getParserByName } from "./parsers/index.ts";
 import type { AppConfig, ParserContext, TogglEntry } from "./types.ts";
 
+type TaskMatcher = {
+  match_type: "exact" | "prefix" | "includes" | "regex";
+  pattern: string;
+  task_label: string;
+};
+
 type CheckEntriesOptions = {
   rootDir: string;
   configPath?: string;
@@ -117,10 +123,7 @@ function createParserContext(config: AppConfig, normalizedProjectName: string, p
   };
 }
 
-function matchDescription(
-  description: string,
-  matcher: NonNullable<AppConfig["upload"]>["task_matchers_by_project"][string][number]
-): boolean {
+function matchDescription(description: string, matcher: TaskMatcher): boolean {
   if (matcher.match_type === "exact") {
     return description === matcher.pattern;
   }

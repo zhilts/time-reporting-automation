@@ -5,10 +5,18 @@
   "type": "module",
   "scripts": {
     "check:entries": "node ./src/cli.ts check-entries",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
     "sync:week-current": "node ./src/cli.ts sync-week-current",
     "reset:week-current": "node ./src/cli.ts reset-week-current"
   },
   "dependencies": {
     "playwright": "^1.58.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

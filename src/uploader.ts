@@ -13,6 +13,12 @@ import type {
   UploadStateItem
 } from "./types.ts";
 
+type TaskMatcher = {
+  match_type: "exact" | "prefix" | "includes" | "regex";
+  pattern: string;
+  task_label: string;
+};
+
 function hashValue(value: string): string {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -48,10 +54,7 @@ function formatDateForTarget(workDate: string): string {
   return `${day}.${month}.${year}`;
 }
 
-function matchDescription(
-  description: string,
-  matcher: NonNullable<AppConfig["upload"]>["task_matchers_by_project"][string][number]
-): boolean {
+function matchDescription(description: string, matcher: TaskMatcher): boolean {
   if (matcher.match_type === "exact") {
     return description === matcher.pattern;
   }
@@ -148,6 +151,11 @@ type DailyUploadCandidate = {
   item: ReportItem;
   sourceWorkDate: string;
   roundedDayMinutes: number;
+};
+
+type OverflowCandidate = {
+  candidate: DailyUploadCandidate;
+  overflowMinutes: number;
 };
 
 function expandReportItemToDailyCandidates(item: ReportItem, config: AppConfig): DailyUploadCandidate[] {
@@ -248,54 +256,98 @@ function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): Uplo
 
   const weeklyWorkingDays = new Map<string, string[]>();
   for (const candidate of candidates) {
-    if (!isWorkingDay(candidate.sourceWorkDate, config)) {
-      continue;
-    }
-
     const weekKey = getWeekKey(candidate.sourceWorkDate);
     const days = weeklyWorkingDays.get(weekKey) ?? [];
-    if (!days.includes(candidate.sourceWorkDate)) {
-      days.push(candidate.sourceWorkDate);
-      days.sort();
+    const [year, month, day] = weekKey.split("-").map(Number);
+
+    for (let offset = 0; offset < 7; offset += 1) {
+      const date = new Date(Date.UTC(year, month - 1, day + offset));
+      const workDate = date.toISOString().slice(0, 10);
+      if (!isWorkingDay(workDate, config) || days.includes(workDate)) {
+        continue;
+      }
+
+      days.push(workDate);
     }
+
+    days.sort();
     weeklyWorkingDays.set(weekKey, days);
   }
 
   const remainingStandardByDay = new Map<string, number>();
   const planItems: UploadPlanItem[] = [];
+  const overflowCandidates: OverflowCandidate[] = [];
   let segmentIndex = 0;
 
+  const addSegment = (
+    candidate: DailyUploadCandidate,
+    targetWorkDate: string,
+    durationMinutes: number,
+    timeBucket: "standard" | "overtime"
+  ) => {
+    segmentIndex += 1;
+    const item = toUploadPlanItem(candidate.item, config, targetWorkDate, durationMinutes, timeBucket);
+    item.idempotency_key = [
+      candidate.item.idempotency_key,
+      candidate.sourceWorkDate,
+      targetWorkDate,
+      timeBucket,
+      durationMinutes,
+      segmentIndex
+    ].join(":");
+    planItems.push(item);
+  };
+
   for (const candidate of candidates) {
-    let remainingMinutes = candidate.roundedDayMinutes;
+    const currentRemaining = remainingStandardByDay.has(candidate.sourceWorkDate)
+      ? (remainingStandardByDay.get(candidate.sourceWorkDate) ?? 0)
+      : standardLimit;
+    const canUseSourceStandard = isWorkingDay(candidate.sourceWorkDate, config);
+    const sourceStandardMinutes = canUseSourceStandard
+      ? Math.min(candidate.roundedDayMinutes, Math.max(0, currentRemaining))
+      : 0;
+    let overflowMinutes = candidate.roundedDayMinutes - sourceStandardMinutes;
+
+    if (sourceStandardMinutes > 0) {
+      addSegment(candidate, candidate.sourceWorkDate, sourceStandardMinutes, "standard");
+      remainingStandardByDay.set(candidate.sourceWorkDate, currentRemaining - sourceStandardMinutes);
+    }
+
+    if (overflowMinutes > 0) {
+      overflowCandidates.push({ candidate, overflowMinutes });
+    }
+  }
+
+  for (const overflowCandidate of overflowCandidates) {
+    const { candidate } = overflowCandidate;
+    let overflowMinutes = overflowCandidate.overflowMinutes;
     const weekKey = getWeekKey(candidate.sourceWorkDate);
     const targetWorkingDays = weeklyWorkingDays.get(weekKey) ?? [];
 
     for (const targetWorkDate of targetWorkingDays) {
-      if (remainingMinutes <= 0) {
+      if (overflowMinutes <= 0) {
         break;
       }
 
-      const currentRemaining = remainingStandardByDay.has(targetWorkDate)
+      if (targetWorkDate === candidate.sourceWorkDate) {
+        continue;
+      }
+
+      const targetRemaining = remainingStandardByDay.has(targetWorkDate)
         ? (remainingStandardByDay.get(targetWorkDate) ?? 0)
         : standardLimit;
-      const standardMinutes = Math.min(remainingMinutes, Math.max(0, currentRemaining));
+      const standardMinutes = Math.min(overflowMinutes, Math.max(0, targetRemaining));
       if (standardMinutes <= 0) {
         continue;
       }
 
-      segmentIndex += 1;
-      const standardItem = toUploadPlanItem(candidate.item, config, targetWorkDate, standardMinutes, "standard");
-      standardItem.idempotency_key = `${candidate.item.idempotency_key}:${candidate.sourceWorkDate}:${targetWorkDate}:standard:${standardMinutes}:${segmentIndex}`;
-      planItems.push(standardItem);
-      remainingStandardByDay.set(targetWorkDate, currentRemaining - standardMinutes);
-      remainingMinutes -= standardMinutes;
+      addSegment(candidate, targetWorkDate, standardMinutes, "standard");
+      remainingStandardByDay.set(targetWorkDate, targetRemaining - standardMinutes);
+      overflowMinutes -= standardMinutes;
     }
 
-    if (remainingMinutes > 0) {
-      segmentIndex += 1;
-      const overtimeItem = toUploadPlanItem(candidate.item, config, candidate.sourceWorkDate, remainingMinutes, "overtime");
-      overtimeItem.idempotency_key = `${candidate.item.idempotency_key}:${candidate.sourceWorkDate}:${candidate.sourceWorkDate}:overtime:${remainingMinutes}:${segmentIndex}`;
-      planItems.push(overtimeItem);
+    if (overflowMinutes > 0) {
+      addSegment(candidate, candidate.sourceWorkDate, overflowMinutes, "overtime");
     }
   }
 
