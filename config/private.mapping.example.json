@@ -46,7 +46,7 @@
       "INTERNAL_CODE_HERE": "UI Project Label"
     },
     "default_task_by_project": {
-      "ANOTHER_INTERNAL_CODE": "Interview"
+      "ANOTHER_INTERNAL_CODE": "UI Task Label C"
     },
     "task_by_activity_code": {
       "INTERNAL_CODE_HERE": {
@@ -59,10 +59,18 @@
       "ANOTHER_INTERNAL_CODE": [
         {
           "match_type": "prefix",
-          "pattern": "PPR",
-          "task_label": "Performance Review"
+          "pattern": "ONE_OFF_PREFIX",
+          "task_label": "UI Task Label D"
         }
       ]
+    }
+  },
+  "reporting": {
+    "backend": "playwright",
+    "external_command": {
+      "command": "node",
+      "args": ["./scripts/target-reporting-adapter.example.js"],
+      "timeout_ms": 120000
     }
   },
   "browser_launch": {

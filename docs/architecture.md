@@ -4,7 +4,7 @@
 
 - Deterministic logic for data transformation.
 - No LLM in the mapping path.
-- Browser automation only for the target-system UI step.
+- Target-system writes go through an adapter boundary.
 - Resume-safe output with explicit exceptions.
 
 ## Separation
@@ -46,25 +46,49 @@ Contract:
 - input: normalized Toggl entry plus project config
 - output: partial reporting meaning used by the shared mapper pipeline
 
-### Uploader
+### Upload Planner
 
 Responsibilities:
 
 - Read `report_items.json`.
-- Create items in the target system.
+- Allocate standard and overtime buckets.
+- Create a target-system-neutral upload plan.
 - Save progress state for resume.
-- Capture screenshots and errors on failure.
 
 Non-responsibilities:
 
+- No target-system side effects.
+- No browser or API access.
 - No data transformation.
 - No mutation of item meaning.
+
+### Reporting Adapter
+
+Responsibilities:
+
+- Accept the prepared upload plan.
+- Create or reuse records in the target reporting system.
+- Reset records for a selected range when supported.
+- Persist item statuses through the shared upload state file.
+
+Backends:
+
+- `playwright` drives a browser profile and target UI.
+- `external-command` delegates to a local command over a JSON stdin/stdout protocol.
+
+Non-responsibilities:
+
+- No Toggl parsing.
+- No project-specific semantic mapping.
+- No hard dependency on any one MCP server or target-system API.
 
 ## Why This Model
 
 If the target system is stable and Toggl export is under your control, the transformation should be plain code plus config, not prompt behavior.
 
-The plugin layer is there because plain code still needs a clean place for project-specific reporting conventions.
+The parser layer is there because plain code still needs a clean place for project-specific reporting conventions.
+
+The adapter layer is separate because different target systems may expose browser-only flows, MCP tools, REST APIs, or CLI bridges.
 
 ## Sensitive Data Strategy
 

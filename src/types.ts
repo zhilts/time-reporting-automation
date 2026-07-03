@@ -88,6 +88,14 @@ export type AppConfig = {
   rounding: RoundingConfig;
   rules?: Record<string, string>;
   privacy?: Record<string, unknown>;
+  reporting?: {
+    backend?: "playwright" | "mcp" | "external-command";
+    external_command?: {
+      command?: string;
+      args?: string[];
+      timeout_ms?: number;
+    };
+  };
   upload?: {
     target_page_url?: string;
     standard_minutes_per_workday?: number;
@@ -249,4 +257,9 @@ export type PrepareUploadSummary = {
   ready_item_count: number;
   blocked_item_count: number;
   allocation: UploadAllocationSummary;
+};
+
+export type WeekRange = {
+  startDate: string;
+  endDate: string;
 };

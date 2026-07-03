@@ -78,6 +78,14 @@
       ]
     }
   },
+  "reporting": {
+    "backend": "playwright",
+    "external_command": {
+      "command": "node",
+      "args": ["./scripts/target-reporting-adapter.example.js"],
+      "timeout_ms": 120000
+    }
+  },
   "browser_launch": {
     "enabled": false,
     "channel": "chrome",

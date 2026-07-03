@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { BrowserContext, Dialog, Page } from "playwright";
 import { loadConfig, loadJsonFile } from "./config.ts";
 import { fetchAndStoreTogglEntries } from "./toggl-api.ts";
 import { runMapper } from "./mapper.ts";
 import { prepareUpload } from "./uploader.ts";
 import { writeJson } from "./io.ts";
-import type { AppConfig, MapperSummary, UploadAllocationSummary, UploadPlan, UploadPlanItem, UploadState } from "./types.ts";
+import { createReportingAdapter } from "./reporting-adapters/index.ts";
+import type { MapperSummary, UploadAllocationSummary, UploadPlan, UploadState, WeekRange } from "./types.ts";
 
 const WEEK_FETCH_PATH = "./runtime/input/toggl.time_entries.json";
 const WEEK_OUTPUT_DIR = "./runtime/output/week-current";
@@ -18,19 +18,10 @@ const LEGACY_OUTPUT_DIR = "./runtime/output/latest";
 const LEGACY_PLAN_PATH = "./runtime/state/upload-plan.json";
 const LEGACY_STATE_PATH = "./runtime/state/upload-state.json";
 
-type WeekRange = {
-  startDate: string;
-  endDate: string;
-};
-
-type ExistingRecord = {
-  recordId: string;
-  text: string;
-};
-
 export type SyncWeekCurrentSummary = {
   start_date: string;
   end_date: string;
+  reporting_backend: string;
   deleted_record_ids: string[];
   uploaded_keys: string[];
   reused_existing_keys: string[];
@@ -43,6 +34,7 @@ export type SyncWeekCurrentSummary = {
 export type ResetWeekCurrentSummary = {
   start_date: string;
   end_date: string;
+  reporting_backend: string;
   deleted_record_ids: string[];
   removed_files: string[];
   removed_directories: string[];
@@ -76,40 +68,12 @@ function getCurrentWeekRange(): WeekRange {
   };
 }
 
-function updateUploadStateFile(state: UploadState, uploadedKeys: string[]): UploadState {
-  const uploadedSet = new Set(uploadedKeys);
-  const now = new Date().toISOString();
-
-  for (const item of state.items) {
-    if (uploadedSet.has(item.idempotency_key)) {
-      item.status = "uploaded";
-      item.last_error = null;
-      item.updated_at = now;
-      continue;
-    }
-  }
-
-  state.updated_at = now;
-  return state;
-}
-
-function setUploadStateStatus(
-  state: UploadState,
-  idempotencyKey: string,
-  status: "pending" | "uploaded" | "failed" | "skipped" | "blocked",
-  lastError: string | null = null
-): UploadState {
-  const now = new Date().toISOString();
-  const targetItem = state.items.find((item) => item.idempotency_key === idempotencyKey);
-  if (!targetItem) {
-    return state;
-  }
-
-  targetItem.status = status;
-  targetItem.last_error = lastError;
-  targetItem.updated_at = now;
-  state.updated_at = now;
-  return state;
+function resolveWeekRange(startDate?: string, endDate?: string): WeekRange {
+  const currentWeek = getCurrentWeekRange();
+  return {
+    startDate: startDate ?? currentWeek.startDate,
+    endDate: endDate ?? currentWeek.endDate
+  };
 }
 
 function pruneEmptyDirectory(directoryPath: string, stopAtPath: string, removedDirectories: string[]): void {
@@ -140,227 +104,7 @@ function removeFileIfExists(filePath: string): void {
   fs.unlinkSync(filePath);
 }
 
-async function openConfiguredContext(rootDir: string, config: NonNullable<AppConfig["browser_launch"]>): Promise<BrowserContext> {
-  const playwrightModule = await import("playwright");
-  if (!config.user_data_dir) {
-    throw new Error("browser_launch.user_data_dir is required.");
-  }
-
-  const userDataDir = path.isAbsolute(config.user_data_dir)
-    ? config.user_data_dir
-    : path.resolve(rootDir, config.user_data_dir);
-
-  fs.mkdirSync(userDataDir, { recursive: true });
-
-  try {
-    return await playwrightModule.chromium.launchPersistentContext(userDataDir, {
-      channel: config.channel ?? "chrome",
-      headless: config.headless ?? false,
-      executablePath: config.executable_path ?? undefined,
-      args: config.profile_directory
-        ? [`--profile-directory=${config.profile_directory}`, ...(config.args ?? [])]
-        : (config.args ?? [])
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("ProcessSingleton") || message.includes("SingletonLock")) {
-      throw new Error(
-        `Automation browser profile is locked: ${userDataDir}. ` +
-        "Close the existing automation Chrome window or remove the stale lock, then rerun sync:week-current."
-      );
-    }
-
-    throw error;
-  }
-}
-
-async function resolveTargetPage(context: BrowserContext, targetUrl: string): Promise<Page> {
-  for (const page of context.pages()) {
-    if (page.url().startsWith(targetUrl)) {
-      return page;
-    }
-  }
-
-  const page = context.pages()[0] ?? await context.newPage();
-  await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
-  return page;
-}
-
-async function waitForStablePage(page: Page, ms = 3_000): Promise<void> {
-  await page.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
-  await page.waitForTimeout(ms);
-}
-
-async function collectExistingRecords(page: Page): Promise<ExistingRecord[]> {
-  return page.evaluate(() =>
-    Array.from(document.querySelectorAll("[title='Delete record']"))
-      .map((node) => {
-        const onclick = node.getAttribute("onclick") ?? "";
-        const match = onclick.match(/doDelete\('([^']+)'\)/);
-        const recordId = match ? match[1] : null;
-
-        let container: Element | null = node;
-        while (container && container.tagName !== "TR") {
-          container = container.parentElement;
-        }
-
-        const text = (container?.textContent ?? "").replace(/\s+/g, " ").trim();
-        return recordId ? { recordId, text } : null;
-      })
-      .filter(Boolean) as ExistingRecord[]
-  );
-}
-
-function matchesExistingRecord(item: UploadPlanItem, existingRecords: ExistingRecord[]): boolean {
-  const fragments = [
-    item.project_label,
-    item.task_label ?? "",
-    item.effort_hours,
-    item.target_description,
-    item.start_date,
-    item.finish_date
-  ].filter(Boolean);
-
-  return existingRecords.some((record) => fragments.every((fragment) => record.text.includes(fragment)));
-}
-
-async function deleteRecord(page: Page, recordId: string): Promise<void> {
-  const dialogHandler = async (dialog: Dialog) => {
-    await dialog.accept();
-  };
-
-  page.once("dialog", dialogHandler);
-  await page.evaluate((targetRecordId) => {
-    const deleteControl = Array.from(document.querySelectorAll("[title='Delete record']")).find((node) =>
-      (node.getAttribute("onclick") ?? "").includes(targetRecordId)
-    ) as HTMLElement | undefined;
-
-    if (!deleteControl) {
-      throw new Error(`Delete control not found for record ${targetRecordId}`);
-    }
-
-    deleteControl.click();
-  }, recordId);
-
-  await waitForStablePage(page, 6_000);
-}
-
-async function waitForTaskOption(page: Page, label: string): Promise<void> {
-  await page.waitForFunction((targetLabel) => {
-    const select = document.getElementById("listBoxIssueCode") as HTMLSelectElement | null;
-    if (!select) {
-      return false;
-    }
-
-    return Array.from(select.options).some((option) => option.textContent?.trim() === targetLabel);
-  }, label, { timeout: 30_000 });
-}
-
-async function openAddForm(page: Page): Promise<void> {
-  const addLink = page.locator("[title='Add new record']").first();
-  await addLink.click({ noWaitAfter: true, timeout: 60_000 });
-  await page.waitForLoadState("domcontentloaded", { timeout: 60_000 }).catch(() => {});
-  await page.waitForSelector("#listBoxProjectUuid", { timeout: 60_000 });
-  await page.waitForTimeout(1_500);
-}
-
-async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
-  if (!item.task_label) {
-    throw new Error(`Missing task label for ${item.idempotency_key}`);
-  }
-
-  await openAddForm(page);
-  await page.selectOption("#listBoxProjectUuid", { label: item.project_label });
-  await waitForTaskOption(page, item.task_label);
-  await page.selectOption("#listBoxIssueCode", { label: item.task_label });
-  await page.fill("#effortRecordBugNumber", item.task_id ?? "");
-  if (item.time_bucket === "overtime") {
-    await page.fill("#effortRecordEffort", "0");
-    await page.fill("#effortRecordEffortOvertime", item.effort_hours);
-  } else {
-    await page.fill("#effortRecordEffort", item.effort_hours);
-    await page.fill("#effortRecordEffortOvertime", "0");
-  }
-  await page.fill("#effortRecordDescription", item.target_description);
-  await page.evaluate(({ started, finished }) => {
-    const setDateValue = (selector: string, value: string) => {
-      const input = document.querySelector(selector) as HTMLInputElement | null;
-      if (!input) {
-        throw new Error(`Missing date input ${selector}`);
-      }
-
-      input.removeAttribute("readonly");
-      input.value = value;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    };
-
-    setDateValue("#effortRecordStarted", started);
-    setDateValue("#effortRecordFinished", finished);
-  }, { started: item.start_date, finished: item.finish_date });
-
-  const dialogMessages: string[] = [];
-  const dialogHandler = async (dialog: Dialog) => {
-    dialogMessages.push(dialog.message());
-    await dialog.accept();
-  };
-
-  page.on("dialog", dialogHandler);
-  try {
-    await page.locator("input[value='SAVE']").click();
-    await waitForStablePage(page, 8_000);
-  } finally {
-    page.off("dialog", dialogHandler);
-  }
-
-  if (dialogMessages.length > 0) {
-    throw new Error(dialogMessages.join(" | "));
-  }
-}
-
-export async function resetWeekCurrent({
-  rootDir,
-  configPath = "./config/mapping.json",
-  privateConfigPath = "./config/private.mapping.json",
-  startDate,
-  endDate
-}: {
-  rootDir: string;
-  configPath?: string;
-  privateConfigPath?: string;
-  startDate?: string;
-  endDate?: string;
-}): Promise<ResetWeekCurrentSummary> {
-  const weekRange = {
-    startDate: startDate ?? getCurrentWeekRange().startDate,
-    endDate: endDate ?? getCurrentWeekRange().endDate
-  };
-  const config = loadConfig(rootDir, configPath, privateConfigPath);
-  const browserLaunch = config.browser_launch;
-  const targetUrl = config.upload?.target_page_url;
-  if (!browserLaunch?.enabled || !targetUrl) {
-    throw new Error("Browser launch is not configured.");
-  }
-
-  const context = await openConfiguredContext(rootDir, browserLaunch);
-  const deletedRecordIds: string[] = [];
-
-  try {
-    const page = await resolveTargetPage(context, targetUrl);
-    await page.bringToFront().catch(() => {});
-    await waitForStablePage(page);
-
-    const existingRecords = await collectExistingRecords(page);
-    console.error(`[reset] deleting ${existingRecords.length} records`);
-
-    for (const record of existingRecords) {
-      await deleteRecord(page, record.recordId);
-      deletedRecordIds.push(record.recordId);
-    }
-  } finally {
-    await context.close().catch(() => {});
-  }
-
+function cleanupRuntimeArtifacts(rootDir: string): { removedFiles: string[]; removedDirectories: string[] } {
   const removedFiles: string[] = [];
   const removedDirectories: string[] = [];
   const absoluteFetchPath = path.resolve(rootDir, WEEK_FETCH_PATH);
@@ -401,11 +145,54 @@ export async function resetWeekCurrent({
   }
 
   return {
+    removedFiles,
+    removedDirectories: [...new Set(removedDirectories)]
+  };
+}
+
+function cleanupTransientSyncFiles(rootDir: string): void {
+  removeFileIfExists(path.resolve(rootDir, WEEK_FETCH_PATH));
+  removeFileIfExists(path.resolve(rootDir, WEEK_PLAN_PATH));
+  removeFileIfExists(path.resolve(rootDir, WEEK_REPORT_PATH));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "report_items.redacted.json")));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "exceptions.json")));
+  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "run-summary.json")));
+
+  const removedDirectories: string[] = [];
+  const runtimeRoot = path.resolve(rootDir, "./runtime");
+  pruneEmptyDirectory(path.resolve(rootDir, "./runtime/input"), runtimeRoot, removedDirectories);
+}
+
+export async function resetWeekCurrent({
+  rootDir,
+  configPath = "./config/mapping.json",
+  privateConfigPath = "./config/private.mapping.json",
+  startDate,
+  endDate
+}: {
+  rootDir: string;
+  configPath?: string;
+  privateConfigPath?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<ResetWeekCurrentSummary> {
+  const weekRange = resolveWeekRange(startDate, endDate);
+  const config = loadConfig(rootDir, configPath, privateConfigPath);
+  const adapter = createReportingAdapter(config);
+  const resetResult = await adapter.reset({
+    rootDir,
+    config,
+    weekRange
+  });
+  const cleanupResult = cleanupRuntimeArtifacts(rootDir);
+
+  return {
     start_date: weekRange.startDate,
     end_date: weekRange.endDate,
-    deleted_record_ids: deletedRecordIds,
-    removed_files: removedFiles,
-    removed_directories: [...new Set(removedDirectories)]
+    reporting_backend: resetResult.backend,
+    deleted_record_ids: resetResult.deletedRecordIds,
+    removed_files: cleanupResult.removedFiles,
+    removed_directories: cleanupResult.removedDirectories
   };
 }
 
@@ -422,11 +209,7 @@ export async function syncWeekCurrent({
   startDate?: string;
   endDate?: string;
 }): Promise<SyncWeekCurrentSummary> {
-  const weekRange = {
-    startDate: startDate ?? getCurrentWeekRange().startDate,
-    endDate: endDate ?? getCurrentWeekRange().endDate
-  };
-
+  const weekRange = resolveWeekRange(startDate, endDate);
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const apiToken = process.env.TOGGL_API_TOKEN ?? config.toggl_api?.api_token ?? null;
   const fetchSummary = await fetchAndStoreTogglEntries({
@@ -455,63 +238,29 @@ export async function syncWeekCurrent({
     statePath: WEEK_STATE_PATH
   });
 
-  const browserLaunch = config.browser_launch;
-  const targetUrl = config.upload?.target_page_url;
-  if (!browserLaunch?.enabled || !targetUrl) {
-    throw new Error("Browser launch is not configured.");
-  }
-
   const plan = loadJsonFile<UploadPlan>(path.resolve(rootDir, WEEK_PLAN_PATH), true) as UploadPlan;
   const state = loadJsonFile<UploadState>(path.resolve(rootDir, WEEK_STATE_PATH), true) as UploadState;
-  const targetItems = plan.items.filter((item) => item.upload_ready);
-  const context = await openConfiguredContext(rootDir, browserLaunch);
-  const uploadedKeys: string[] = [];
-  const reusedExistingKeys: string[] = [];
-  const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);
+  const planPath = path.resolve(rootDir, WEEK_PLAN_PATH);
+  const statePath = path.resolve(rootDir, WEEK_STATE_PATH);
+  const adapter = createReportingAdapter(config);
 
-  try {
-    const page = await resolveTargetPage(context, targetUrl);
-    await page.bringToFront().catch(() => {});
-    await waitForStablePage(page);
-
-    const existingRecords = await collectExistingRecords(page);
-    for (const item of targetItems) {
-      if (matchesExistingRecord(item, existingRecords)) {
-        reusedExistingKeys.push(item.idempotency_key);
-        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "uploaded"));
-      }
-    }
-
-    console.error(`[sync] week ${weekRange.startDate}..${weekRange.endDate}`);
-    console.error(`[sync] reuse ${reusedExistingKeys.length}, upload ${targetItems.length - reusedExistingKeys.length}`);
-    for (const item of targetItems) {
-      if (reusedExistingKeys.includes(item.idempotency_key)) {
-        continue;
-      }
-
-      try {
-        await addRecord(page, item);
-        uploadedKeys.push(item.idempotency_key);
-        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "uploaded"));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        writeJson(absoluteStatePath, setUploadStateStatus(state, item.idempotency_key, "failed", message));
-        throw error;
-      }
-    }
-  } finally {
-    await context.close().catch(() => {});
-  }
-
-  const finalUploadedKeys = [...reusedExistingKeys, ...uploadedKeys];
-  writeJson(absoluteStatePath, updateUploadStateFile(state, finalUploadedKeys));
+  const syncResult = await adapter.sync({
+    rootDir,
+    config,
+    weekRange,
+    plan,
+    planPath,
+    state,
+    statePath
+  });
 
   const summary: SyncWeekCurrentSummary = {
     start_date: weekRange.startDate,
     end_date: weekRange.endDate,
-    deleted_record_ids: [],
-    uploaded_keys: uploadedKeys,
-    reused_existing_keys: reusedExistingKeys,
+    reporting_backend: syncResult.backend,
+    deleted_record_ids: syncResult.deletedRecordIds,
+    uploaded_keys: syncResult.uploadedKeys,
+    reused_existing_keys: syncResult.reusedExistingKeys,
     output_path: path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH),
     fetch_entries: fetchSummary.fetched_entries,
     mapped_items: mapSummary.total_output_items,
@@ -519,14 +268,6 @@ export async function syncWeekCurrent({
   };
 
   writeJson(path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH), summary);
-  removeFileIfExists(path.resolve(rootDir, WEEK_FETCH_PATH));
-  removeFileIfExists(path.resolve(rootDir, WEEK_PLAN_PATH));
-  removeFileIfExists(path.resolve(rootDir, WEEK_REPORT_PATH));
-  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "report_items.redacted.json")));
-  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "exceptions.json")));
-  removeFileIfExists(path.resolve(rootDir, path.join(WEEK_OUTPUT_DIR, "run-summary.json")));
-  const removedDirectories: string[] = [];
-  const runtimeRoot = path.resolve(rootDir, "./runtime");
-  pruneEmptyDirectory(path.resolve(rootDir, "./runtime/input"), runtimeRoot, removedDirectories);
+  cleanupTransientSyncFiles(rootDir);
   return summary;
 }
