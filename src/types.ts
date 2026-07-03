@@ -239,6 +239,8 @@ export type PrepareUploadOptions = {
   privateConfigPath?: string;
   planPath?: string;
   statePath?: string;
+  allocationStartDate?: string;
+  allocationEndDate?: string;
 };
 
 export type PrepareUploadSummary = {

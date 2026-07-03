@@ -452,7 +452,9 @@ export async function syncWeekCurrent({
     configPath,
     privateConfigPath,
     planPath: WEEK_PLAN_PATH,
-    statePath: WEEK_STATE_PATH
+    statePath: WEEK_STATE_PATH,
+    allocationStartDate: weekRange.startDate,
+    allocationEndDate: weekRange.endDate
   });
 
   const browserLaunch = config.browser_launch;

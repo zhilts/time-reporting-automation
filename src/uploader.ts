@@ -158,6 +158,11 @@ type OverflowCandidate = {
   overflowMinutes: number;
 };
 
+type AllocationRange = {
+  startDate?: string;
+  endDate?: string;
+};
+
 function expandReportItemToDailyCandidates(item: ReportItem, config: AppConfig): DailyUploadCandidate[] {
   const incrementMinutes = config.rounding.increment_minutes ?? 30;
   const roundingPolicy = config.rounding.policy ?? "nearest";
@@ -241,7 +246,19 @@ function hashUploadPlanIdentity(item: UploadPlanItem): string {
   ].join("|"));
 }
 
-function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): UploadPlanItem[] {
+function isWithinAllocationRange(workDate: string, allocationRange: AllocationRange): boolean {
+  if (allocationRange.startDate && workDate < allocationRange.startDate) {
+    return false;
+  }
+
+  if (allocationRange.endDate && workDate > allocationRange.endDate) {
+    return false;
+  }
+
+  return true;
+}
+
+function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig, allocationRange: AllocationRange = {}): UploadPlanItem[] {
   const standardLimit = config.upload?.standard_minutes_per_workday ?? 8 * 60;
   const candidates = rawItems
     .filter((item) => !item.needs_review)
@@ -263,7 +280,7 @@ function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig): Uplo
     for (let offset = 0; offset < 7; offset += 1) {
       const date = new Date(Date.UTC(year, month - 1, day + offset));
       const workDate = date.toISOString().slice(0, 10);
-      if (!isWorkingDay(workDate, config) || days.includes(workDate)) {
+      if (!isWithinAllocationRange(workDate, allocationRange) || !isWorkingDay(workDate, config) || days.includes(workDate)) {
         continue;
       }
 
@@ -400,7 +417,9 @@ export function prepareUpload({
   configPath = "./config/mapping.json",
   privateConfigPath = "./config/private.mapping.json",
   planPath = "./runtime/state/upload-plan.json",
-  statePath = "./runtime/state/upload-state.json"
+  statePath = "./runtime/state/upload-state.json",
+  allocationStartDate,
+  allocationEndDate
 }: PrepareUploadOptions): PrepareUploadSummary {
   const resolvedInputPath = path.resolve(rootDir, inputPath);
   const resolvedPlanPath = path.resolve(rootDir, planPath);
@@ -408,7 +427,10 @@ export function prepareUpload({
   const config = loadConfig(rootDir, configPath, privateConfigPath);
   const raw = readInputFile(resolvedInputPath) as ReportItem[];
 
-  const uploadItems = allocateDailyPlanItems(raw, config)
+  const uploadItems = allocateDailyPlanItems(raw, config, {
+    startDate: allocationStartDate,
+    endDate: allocationEndDate
+  })
     .sort((left, right) => {
       if (left.work_date !== right.work_date) {
         return left.work_date.localeCompare(right.work_date);

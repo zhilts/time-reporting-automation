@@ -9,6 +9,8 @@ type FixtureConfigOptions = {
   holidays?: string[];
   standardMinutesPerWorkday?: number;
   taskByActivityCode?: Record<string, Record<string, string>>;
+  allocationStartDate?: string;
+  allocationEndDate?: string;
 };
 
 type DayAllocation = {
@@ -108,7 +110,9 @@ function prepareFixture(items: ReportItem[], options: FixtureConfigOptions = {})
     configPath: "./config.json",
     privateConfigPath: "./private.json",
     planPath: "./plan.json",
-    statePath: "./state.json"
+    statePath: "./state.json",
+    allocationStartDate: options.allocationStartDate,
+    allocationEndDate: options.allocationEndDate
   });
   return JSON.parse(fs.readFileSync(path.join(rootDir, "plan.json"), "utf8")) as UploadPlan;
 }
@@ -159,6 +163,25 @@ describe("upload allocation", () => {
     expect(byDay["2026-07-02"].standard).toBe(120);
     expect(descriptions(byDay["2026-07-02"])).toEqual(["standard:monday:120"]);
     expect(byDay["2026-07-03"].standard).toBe(420);
+  });
+
+  it("does not move overflow outside an explicit allocation date range", () => {
+    const plan = prepareFixture([
+      reportItem("wednesday", "2026-07-01", 600),
+      reportItem("thursday", "2026-07-02", 480),
+      reportItem("friday", "2026-07-03", 480)
+    ], {
+      allocationStartDate: "2026-07-01",
+      allocationEndDate: "2026-07-03"
+    });
+    const byDay = allocationByDay(plan);
+
+    expect(byDay["2026-06-29"]).toBeUndefined();
+    expect(byDay["2026-06-30"]).toBeUndefined();
+    expect(byDay["2026-07-01"].standard).toBe(480);
+    expect(byDay["2026-07-01"].overtime).toBe(120);
+    expect(byDay["2026-07-02"].standard).toBe(480);
+    expect(byDay["2026-07-03"].standard).toBe(480);
   });
 
   it("keeps overflow as overtime on the source day when the week has no free capacity", () => {
