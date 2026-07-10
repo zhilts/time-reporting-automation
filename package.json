@@ -8,6 +8,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "sync": "node ./src/cli.ts sync",
+    "reset": "node ./src/cli.ts reset",
     "sync:week-current": "node ./src/cli.ts sync-week-current",
     "reset:week-current": "node ./src/cli.ts reset-week-current"
   },

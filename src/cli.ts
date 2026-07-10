@@ -36,8 +36,10 @@ function getStringArg(args: CliArgs, key: string): string | undefined {
 function printUsage(): void {
   console.log("Usage:");
   console.log("  node ./src/cli.ts check-entries [--date YYYY-MM-DD]");
-  console.log("  node ./src/cli.ts sync-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
-  console.log("  node ./src/cli.ts reset-week-current [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
+  console.log("  node ./src/cli.ts sync [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
+  console.log("  node ./src/cli.ts reset [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]");
+  console.log("  node ./src/cli.ts sync-week-current");
+  console.log("  node ./src/cli.ts reset-week-current");
 }
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,26 +62,28 @@ if (command === "check-entries") {
   process.exit(0);
 }
 
-if (command === "sync-week-current") {
+if (command === "sync" || command === "sync-week-current") {
+  const usesCurrentWeekShortcut = command === "sync-week-current";
   const summary = await syncWeekCurrent({
     rootDir,
     configPath,
     privateConfigPath,
-    startDate: getStringArg(args, "start-date"),
-    endDate: getStringArg(args, "end-date")
+    startDate: usesCurrentWeekShortcut ? undefined : getStringArg(args, "start-date"),
+    endDate: usesCurrentWeekShortcut ? undefined : getStringArg(args, "end-date")
   });
 
   console.log(JSON.stringify(summary, null, 2));
   process.exit(0);
 }
 
-if (command === "reset-week-current") {
+if (command === "reset" || command === "reset-week-current") {
+  const usesCurrentWeekShortcut = command === "reset-week-current";
   const summary = await resetWeekCurrent({
     rootDir,
     configPath,
     privateConfigPath,
-    startDate: getStringArg(args, "start-date"),
-    endDate: getStringArg(args, "end-date")
+    startDate: usesCurrentWeekShortcut ? undefined : getStringArg(args, "start-date"),
+    endDate: usesCurrentWeekShortcut ? undefined : getStringArg(args, "end-date")
   });
 
   console.log(JSON.stringify(summary, null, 2));

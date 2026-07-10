@@ -166,7 +166,7 @@ async function openConfiguredContext(rootDir: string, config: NonNullable<AppCon
     if (message.includes("ProcessSingleton") || message.includes("SingletonLock")) {
       throw new Error(
         `Automation browser profile is locked: ${userDataDir}. ` +
-        "Close the existing automation Chrome window or remove the stale lock, then rerun sync:week-current."
+        "Close the existing automation Chrome window or remove the stale lock, then rerun the sync command."
       );
     }
 

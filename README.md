@@ -65,10 +65,16 @@ Run the full current-week flow:
 npm run sync:week-current
 ```
 
-Optional explicit range override:
+Run the flow for an explicit range:
 
 ```bash
-npm run sync:week-current -- --start-date 2026-03-23 --end-date 2026-03-29
+npm run sync -- --start-date 2026-03-23 --end-date 2026-03-29
+```
+
+Reset an explicit range:
+
+```bash
+npm run reset -- --start-date 2026-03-23 --end-date 2026-03-29
 ```
 
 ## Runtime Files
@@ -79,7 +85,7 @@ The tool writes transient artifacts under `runtime/` while syncing:
 - `runtime/output/week-current/` for mapped report items and summaries
 - `runtime/state/` for upload state
 
-`npm run reset:week-current` removes the weekly artifacts again.
+`npm run reset:week-current` removes current-week artifacts again.
 
 ## Design Notes
 
