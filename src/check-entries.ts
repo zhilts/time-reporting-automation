@@ -155,8 +155,6 @@ function resolveTaskLabel(
     if (mappedActivityLabel) {
       return mappedActivityLabel;
     }
-
-    return activityCode;
   }
 
   const matchers = uploadConfig.task_matchers_by_project?.[targetProjectCode] ?? [];
@@ -164,6 +162,10 @@ function resolveTaskLabel(
     if (matchDescription(targetDescription, matcher)) {
       return matcher.task_label;
     }
+  }
+
+  if (activityCode) {
+    return activityCode;
   }
 
   return uploadConfig.default_task_by_project?.[targetProjectCode] ?? null;

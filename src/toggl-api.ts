@@ -3,19 +3,30 @@ import { ensureDirectory, writeJson } from "./io.ts";
 import type { FetchAndStoreOptions, FetchOptions, FetchSummary, PrimitiveRecord, TogglEntry } from "./types.ts";
 
 const TOGGL_BASE_URL = "https://api.track.toggl.com/api/v9";
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 function buildBasicAuthHeader(apiToken: string): string {
   const credentials = Buffer.from(`${apiToken}:api_token`).toString("base64");
   return `Basic ${credentials}`;
 }
 
-function buildTimeEntriesUrl({ startDate, endDate, before, since }: FetchOptions): URL {
+function shiftIsoDate(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function toInclusiveEndBoundary(value: string): string {
+  return DATE_ONLY_PATTERN.test(value) ? shiftIsoDate(value, 1) : value;
+}
+
+export function buildTimeEntriesUrl({ startDate, endDate, before, since }: FetchOptions): URL {
   const url = new URL(`${TOGGL_BASE_URL}/me/time_entries`);
   if (startDate) {
     url.searchParams.set("start_date", startDate);
   }
   if (endDate) {
-    url.searchParams.set("end_date", endDate);
+    url.searchParams.set("end_date", toInclusiveEndBoundary(endDate));
   }
   if (before) {
     url.searchParams.set("before", before);

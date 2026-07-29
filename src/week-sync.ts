@@ -23,7 +23,7 @@ type WeekRange = {
   endDate: string;
 };
 
-type ExistingRecord = {
+export type ExistingRecord = {
   recordId: string;
   text: string;
 };
@@ -212,6 +212,17 @@ async function collectExistingRecords(page: Page): Promise<ExistingRecord[]> {
 }
 
 function matchesExistingRecord(item: UploadPlanItem, existingRecords: ExistingRecord[]): boolean {
+  if (item.time_bucket === "overtime") {
+    return existingRecords.some((record) => {
+      const normalizedText = record.text.toLowerCase();
+      return normalizedText.includes("overtime") && matchesExistingRecordItemFragments(item, record);
+    });
+  }
+
+  return existingRecords.some((record) => matchesExistingRecordItemFragments(item, record));
+}
+
+function matchesExistingRecordItemFragments(item: UploadPlanItem, existingRecord: ExistingRecord): boolean {
   const fragments = [
     item.project_label,
     item.task_label ?? "",
@@ -221,7 +232,15 @@ function matchesExistingRecord(item: UploadPlanItem, existingRecords: ExistingRe
     item.finish_date
   ].filter(Boolean);
 
-  return existingRecords.some((record) => fragments.every((fragment) => record.text.includes(fragment)));
+  return fragments.every((fragment) => existingRecord.text.includes(fragment));
+}
+
+function matchesExistingRecordItem(item: UploadPlanItem, existingRecord: ExistingRecord): boolean {
+  return matchesExistingRecord(item, [existingRecord]);
+}
+
+export function findStaleExistingRecords(targetItems: UploadPlanItem[], existingRecords: ExistingRecord[]): ExistingRecord[] {
+  return existingRecords.filter((record) => !targetItems.some((item) => matchesExistingRecordItem(item, record)));
 }
 
 async function deleteRecord(page: Page, recordId: string): Promise<void> {
@@ -467,6 +486,7 @@ export async function syncWeekCurrent({
   const state = loadJsonFile<UploadState>(path.resolve(rootDir, WEEK_STATE_PATH), true) as UploadState;
   const targetItems = plan.items.filter((item) => item.upload_ready);
   const context = await openConfiguredContext(rootDir, browserLaunch);
+  const deletedRecordIds: string[] = [];
   const uploadedKeys: string[] = [];
   const reusedExistingKeys: string[] = [];
   const absoluteStatePath = path.resolve(rootDir, WEEK_STATE_PATH);
@@ -476,7 +496,18 @@ export async function syncWeekCurrent({
     await page.bringToFront().catch(() => {});
     await waitForStablePage(page);
 
-    const existingRecords = await collectExistingRecords(page);
+    let existingRecords = await collectExistingRecords(page);
+    const staleRecords = findStaleExistingRecords(targetItems, existingRecords);
+    if (staleRecords.length > 0) {
+      console.error(`[sync] delete stale ${staleRecords.length}`);
+      for (const record of staleRecords) {
+        await deleteRecord(page, record.recordId);
+        deletedRecordIds.push(record.recordId);
+      }
+
+      existingRecords = await collectExistingRecords(page);
+    }
+
     for (const item of targetItems) {
       if (matchesExistingRecord(item, existingRecords)) {
         reusedExistingKeys.push(item.idempotency_key);
@@ -511,7 +542,7 @@ export async function syncWeekCurrent({
   const summary: SyncWeekCurrentSummary = {
     start_date: weekRange.startDate,
     end_date: weekRange.endDate,
-    deleted_record_ids: [],
+    deleted_record_ids: deletedRecordIds,
     uploaded_keys: uploadedKeys,
     reused_existing_keys: reusedExistingKeys,
     output_path: path.resolve(rootDir, WEEK_SYNC_SUMMARY_PATH),

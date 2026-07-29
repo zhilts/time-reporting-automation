@@ -80,8 +80,6 @@ function resolveTaskLabel(item: ReportItem, config: AppConfig): string | null {
     if (mappedActivityLabel) {
       return mappedActivityLabel;
     }
-
-    return activityLabel;
   }
 
   const matchers = uploadConfig.task_matchers_by_project?.[projectCode] ?? [];
@@ -89,6 +87,10 @@ function resolveTaskLabel(item: ReportItem, config: AppConfig): string | null {
     if (matchDescription(item.target_description, matcher)) {
       return matcher.task_label;
     }
+  }
+
+  if (activityLabel) {
+    return activityLabel;
   }
 
   return uploadConfig.default_task_by_project?.[projectCode] ?? null;
@@ -346,7 +348,7 @@ function allocateDailyPlanItems(rawItems: ReportItem[], config: AppConfig, alloc
         break;
       }
 
-      if (targetWorkDate === candidate.sourceWorkDate) {
+      if (isWorkingDay(candidate.sourceWorkDate, config) && targetWorkDate <= candidate.sourceWorkDate) {
         continue;
       }
 

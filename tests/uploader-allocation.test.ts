@@ -200,6 +200,20 @@ describe("upload allocation", () => {
     expect(byDay["2026-07-03"].standard).toBe(480);
   });
 
+  it("does not move overflow backward to an earlier free day", () => {
+    const plan = prepareFixture([
+      reportItem("monday", "2026-06-29", 420),
+      reportItem("tuesday", "2026-06-30", 510)
+    ]);
+    const byDay = allocationByDay(plan);
+
+    expect(byDay["2026-06-29"].standard).toBe(420);
+    expect(descriptions(byDay["2026-06-29"])).toEqual(["standard:monday:420"]);
+    expect(byDay["2026-06-30"].standard).toBe(480);
+    expect(byDay["2026-07-01"].standard).toBe(30);
+    expect(descriptions(byDay["2026-07-01"])).toEqual(["standard:tuesday:30"]);
+  });
+
   it("keeps non-working-day source work as overtime unless working-day capacity is free", () => {
     const plan = prepareFixture([
       reportItem("saturday", "2026-07-04", 120),

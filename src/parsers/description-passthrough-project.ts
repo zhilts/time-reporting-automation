@@ -5,12 +5,18 @@ function hasInterviewTag(tags: string[]): boolean {
   return tags.some((tag) => tag.toLowerCase() === "interview");
 }
 
+function resolveSingleTagActivityCode(tags: string[]): string | null {
+  const normalizedTags = tags.map((tag) => tag.trim()).filter(Boolean);
+  return normalizedTags.length === 1 ? normalizedTags[0] : null;
+}
+
 export const descriptionPassthroughProjectParser: ProjectParser = {
   name: "description-passthrough-project",
   parseEntry(entry: TogglEntry, _context: ParserContext): ParsedEntry {
     const { taskId, strippedDescription } = parseTaskIdPrefix(entry.description);
     const description = strippedDescription || entry.description.trim();
     const interview = hasInterviewTag(entry.tags);
+    const activityCode = resolveSingleTagActivityCode(entry.tags);
 
     if (interview) {
       return {
@@ -29,7 +35,7 @@ export const descriptionPassthroughProjectParser: ProjectParser = {
     return {
       entryType: "other",
       taskId,
-      activityCode: null,
+      activityCode,
       targetDescription: description || "Unlabeled",
       meetingBucket: null,
       needsReview: description.length === 0,
