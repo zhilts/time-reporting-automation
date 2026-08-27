@@ -9,6 +9,7 @@ type FixtureConfigOptions = {
   holidays?: string[];
   standardMinutesPerWorkday?: number;
   taskByActivityCode?: Record<string, Record<string, string>>;
+  additionalSelectOptionsByProject?: Record<string, Record<string, string>>;
   allocationStartDate?: string;
   allocationEndDate?: string;
 };
@@ -95,7 +96,8 @@ function createFixture(items: ReportItem[], options: FixtureConfigOptions = {}):
           Development: "Development",
           Communication: "Communication"
         }
-      }
+      },
+      additional_select_options_by_project: options.additionalSelectOptionsByProject ?? {}
     }
   });
   writeJson(path.join(rootDir, "report_items.json"), items);
@@ -273,6 +275,22 @@ describe("upload allocation", () => {
     expect(matchingItems).toHaveLength(1);
     expect(matchingItems[0].duration_minutes_rounded).toBe(150);
     expect(matchingItems[0].effort_hours).toBe("2.5");
+  });
+
+  it("includes configured additional select options in upload items", () => {
+    const plan = prepareFixture([
+      reportItem("additional-option", "2026-06-29", 60)
+    ], {
+      additionalSelectOptionsByProject: {
+        PROJECT: {
+          "select[name='additionalField']": "Option A"
+        }
+      }
+    });
+
+    expect(plan.items[0].additional_select_options).toEqual({
+      "select[name='additionalField']": "Option A"
+    });
   });
 
   it("keeps upload blockers for unresolved target tasks", () => {

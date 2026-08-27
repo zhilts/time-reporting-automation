@@ -3,13 +3,8 @@ import { fileURLToPath } from "node:url";
 import { loadConfig, normalizeProjectName } from "./config.ts";
 import { fetchTogglTimeEntries } from "./toggl-api.ts";
 import { getParserByName } from "./parsers/index.ts";
+import { resolveTaskLabel } from "./task-resolver.ts";
 import type { AppConfig, ParserContext, TogglEntry } from "./types.ts";
-
-type TaskMatcher = {
-  match_type: "exact" | "prefix" | "includes" | "regex";
-  pattern: string;
-  task_label: string;
-};
 
 type CheckEntriesOptions = {
   rootDir: string;
@@ -121,54 +116,6 @@ function createParserContext(config: AppConfig, normalizedProjectName: string, p
     incrementMinutes: config.rounding.increment_minutes ?? 30,
     roundingPolicy: config.rounding.policy ?? "nearest"
   };
-}
-
-function matchDescription(description: string, matcher: TaskMatcher): boolean {
-  if (matcher.match_type === "exact") {
-    return description === matcher.pattern;
-  }
-
-  if (matcher.match_type === "prefix") {
-    return description.startsWith(matcher.pattern);
-  }
-
-  if (matcher.match_type === "includes") {
-    return description.includes(matcher.pattern);
-  }
-
-  return new RegExp(matcher.pattern).test(description);
-}
-
-function resolveTaskLabel(
-  targetProjectCode: string | null,
-  activityCode: string | null,
-  targetDescription: string,
-  config: AppConfig
-): string | null {
-  if (!targetProjectCode) {
-    return null;
-  }
-
-  const uploadConfig = config.upload ?? {};
-  if (activityCode) {
-    const mappedActivityLabel = uploadConfig.task_by_activity_code?.[targetProjectCode]?.[activityCode];
-    if (mappedActivityLabel) {
-      return mappedActivityLabel;
-    }
-  }
-
-  const matchers = uploadConfig.task_matchers_by_project?.[targetProjectCode] ?? [];
-  for (const matcher of matchers) {
-    if (matchDescription(targetDescription, matcher)) {
-      return matcher.task_label;
-    }
-  }
-
-  if (activityCode) {
-    return activityCode;
-  }
-
-  return uploadConfig.default_task_by_project?.[targetProjectCode] ?? null;
 }
 
 export async function checkEntries({

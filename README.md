@@ -40,6 +40,10 @@ Recommended Toggl conventions:
   - `Project`: passthrough project
   - `Tags`: `Interview`
   - `Description`: `[#TASK_ID] Interview description`
+- Fixed target routes:
+  - `Project`: dedicated Toggl project configured through the private mapping
+  - `Tags`: none unless the route requires an activity override
+  - `Description`: human-readable activity description
 
 Running timers are not syncable. Stop the timer before running the weekly upload.
 
@@ -92,6 +96,7 @@ The tool writes transient artifacts under `runtime/` while syncing:
 - Mapping is deterministic.
 - Sensitive names and codes stay in `config/private.mapping.json`.
 - Project-specific behavior lives behind the parser factory.
+- Target-specific dependent selects are configured as additional options in the private mapping.
 - Task IDs come from the description prefix, not from permanent Toggl tags.
 - Unmappable entries are left for manual correction instead of guessed.
 

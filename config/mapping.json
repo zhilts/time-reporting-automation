@@ -76,6 +76,11 @@
           "task_label": "CategoryB"
         }
       ]
+    },
+    "additional_select_options_by_project": {
+      "INTERNAL_PROJECT_CODE": {
+        "select[name='additionalField']": "Additional Option Label"
+      }
     }
   },
   "browser_launch": {

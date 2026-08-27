@@ -264,15 +264,41 @@ async function deleteRecord(page: Page, recordId: string): Promise<void> {
   await waitForStablePage(page, 6_000);
 }
 
-async function waitForTaskOption(page: Page, label: string): Promise<void> {
-  await page.waitForFunction((targetLabel) => {
-    const select = document.getElementById("listBoxIssueCode") as HTMLSelectElement | null;
-    if (!select) {
-      return false;
-    }
+async function waitForTaskOption(page: Page, item: UploadPlanItem): Promise<void> {
+  try {
+    await page.waitForFunction((targetLabel) => {
+      const select = document.getElementById("listBoxIssueCode") as HTMLSelectElement | null;
+      if (!select) {
+        return false;
+      }
 
-    return Array.from(select.options).some((option) => option.textContent?.trim() === targetLabel);
-  }, label, { timeout: 30_000 });
+      return Array.from(select.options).some((option) => option.textContent?.trim() === targetLabel);
+    }, item.task_label, { timeout: 30_000 });
+  } catch (error) {
+    const availableLabels = await page.locator("#listBoxIssueCode option").allTextContents().catch(() => []);
+    const available = availableLabels.map((label) => label.trim()).filter(Boolean).join(", ") || "none";
+    throw new Error(
+      `Task option "${item.task_label}" was not found for project "${item.project_label}" ` +
+      `(description: "${item.target_description}"). Available tasks: ${available}`,
+      { cause: error }
+    );
+  }
+}
+
+async function selectAdditionalOptions(page: Page, item: UploadPlanItem): Promise<void> {
+  for (const [selector, label] of Object.entries(item.additional_select_options ?? {})) {
+    try {
+      await page.locator(selector).selectOption({ label }, { timeout: 30_000 });
+    } catch (error) {
+      const availableLabels = await page.locator(`${selector} option`).allTextContents().catch(() => []);
+      const available = availableLabels.map((option) => option.trim()).filter(Boolean).join(", ") || "none";
+      throw new Error(
+        `Additional option "${label}" was not found for project "${item.project_label}" ` +
+        `(selector: "${selector}"). Available options: ${available}`,
+        { cause: error }
+      );
+    }
+  }
 }
 
 async function openAddForm(page: Page): Promise<void> {
@@ -290,8 +316,9 @@ async function addRecord(page: Page, item: UploadPlanItem): Promise<void> {
 
   await openAddForm(page);
   await page.selectOption("#listBoxProjectUuid", { label: item.project_label });
-  await waitForTaskOption(page, item.task_label);
+  await waitForTaskOption(page, item);
   await page.selectOption("#listBoxIssueCode", { label: item.task_label });
+  await selectAdditionalOptions(page, item);
   await page.fill("#effortRecordBugNumber", item.task_id ?? "");
   if (item.time_bucket === "overtime") {
     await page.fill("#effortRecordEffort", "0");

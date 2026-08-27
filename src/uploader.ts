@@ -1,6 +1,7 @@
 import path from "node:path";
 import { loadConfig } from "./config.ts";
 import { ensureDirectory, readInputFile, writeJson } from "./io.ts";
+import { resolveTaskLabel } from "./task-resolver.ts";
 import type {
   AppConfig,
   PrepareUploadOptions,
@@ -12,12 +13,6 @@ import type {
   UploadState,
   UploadStateItem
 } from "./types.ts";
-
-type TaskMatcher = {
-  match_type: "exact" | "prefix" | "includes" | "regex";
-  pattern: string;
-  task_label: string;
-};
 
 function hashValue(value: string): string {
   let hash = 0;
@@ -54,46 +49,11 @@ function formatDateForTarget(workDate: string): string {
   return `${day}.${month}.${year}`;
 }
 
-function matchDescription(description: string, matcher: TaskMatcher): boolean {
-  if (matcher.match_type === "exact") {
-    return description === matcher.pattern;
-  }
-
-  if (matcher.match_type === "prefix") {
-    return description.startsWith(matcher.pattern);
-  }
-
-  if (matcher.match_type === "includes") {
-    return description.includes(matcher.pattern);
-  }
-
-  return new RegExp(matcher.pattern).test(description);
-}
-
-function resolveTaskLabel(item: ReportItem, config: AppConfig): string | null {
-  const uploadConfig = config.upload ?? {};
-  const projectCode = item.target_project_code;
-
-  const activityLabel = item.activity_code ?? null;
-  if (activityLabel) {
-    const mappedActivityLabel = uploadConfig.task_by_activity_code?.[projectCode]?.[activityLabel];
-    if (mappedActivityLabel) {
-      return mappedActivityLabel;
-    }
-  }
-
-  const matchers = uploadConfig.task_matchers_by_project?.[projectCode] ?? [];
-  for (const matcher of matchers) {
-    if (matchDescription(item.target_description, matcher)) {
-      return matcher.task_label;
-    }
-  }
-
-  if (activityLabel) {
-    return activityLabel;
-  }
-
-  return uploadConfig.default_task_by_project?.[projectCode] ?? null;
+function serializeSelectOptions(options: Record<string, string> = {}): string {
+  return Object.entries(options)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([selector, label]) => `${selector}=${label}`)
+    .join("|");
 }
 
 function toUploadPlanItem(
@@ -104,7 +64,14 @@ function toUploadPlanItem(
   timeBucket: "standard" | "overtime"
 ): UploadPlanItem {
   const projectLabel = config.upload?.project_option_labels?.[item.target_project_code] ?? item.target_project_code;
-  const taskLabel = resolveTaskLabel(item, config);
+  const taskLabel = resolveTaskLabel(
+    item.target_project_code,
+    item.activity_code,
+    item.target_description,
+    config
+  );
+  const additionalSelectOptions =
+    config.upload?.additional_select_options_by_project?.[item.target_project_code] ?? {};
   const uploadBlockers: string[] = [];
 
   if (!projectLabel) {
@@ -125,6 +92,7 @@ function toUploadPlanItem(
     activity_code: item.activity_code,
     task_id: item.task_id,
     task_label: taskLabel,
+    additional_select_options: additionalSelectOptions,
     duration_minutes_rounded: durationMinutesRounded,
     effort_hours: formatHours(durationMinutesRounded),
     work_date: workDate,
@@ -195,6 +163,7 @@ function getFinalUploadMergeKey(item: UploadPlanItem): string {
     item.project_label,
     item.task_label ?? "",
     item.task_id ?? "",
+    serializeSelectOptions(item.additional_select_options),
     item.target_description,
     item.activity_code ?? "",
     item.entry_type
@@ -241,6 +210,7 @@ function hashUploadPlanIdentity(item: UploadPlanItem): string {
     item.project_label,
     item.task_label ?? "",
     item.task_id ?? "",
+    serializeSelectOptions(item.additional_select_options),
     item.target_description,
     item.activity_code ?? "",
     item.entry_type,

@@ -63,6 +63,11 @@
           "task_label": "Performance Review"
         }
       ]
+    },
+    "additional_select_options_by_project": {
+      "INTERNAL_CODE_HERE": {
+        "select[name='additionalField']": "Additional Option Label"
+      }
     }
   },
   "browser_launch": {

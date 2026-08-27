@@ -104,6 +104,7 @@ export type AppConfig = {
         task_label: string;
       }>
     >;
+    additional_select_options_by_project?: Record<string, Record<string, string>>;
   };
   browser_launch?: {
     enabled?: boolean;
@@ -193,6 +194,7 @@ export type UploadPlanItem = {
   activity_code: string | null;
   task_id: string | null;
   task_label: string | null;
+  additional_select_options?: Record<string, string>;
   duration_minutes_rounded: number;
   effort_hours: string;
   work_date: string;
